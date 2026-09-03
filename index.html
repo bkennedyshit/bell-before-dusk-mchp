@@ -125,7 +125,7 @@
     const innLanding = { x: 260, y: 735 };
     const smithLanding = { x: 830, y: 735 };
     const innkeeper = { x: 180, y: 350 };
-    const smithkeeper = { x: 180, y: 283 };
+    const smithkeeper = { x: 180, y: 269 };
 
     let audio = null;
     let music = null;
@@ -1843,7 +1843,10 @@
       }
       if (citizenVerticalAtlas) {
         drawCitizenVerticalCell(5, 0, smithkeeper.x, smithkeeper.y + 6, 86);
-        redrawInteriorCounter(forgeInterior, 116, 475, 792, 120);
+        // Repaint the complete near face of the workbench after the smith.
+        // Starting at the countertop lip makes her lower body disappear behind
+        // the furniture instead of reading as if she were standing on top of it.
+        redrawInteriorCounter(forgeInterior, 116, 435, 792, 165);
       }
       drawDoorPlaque(180, 579, "SOUTH EXIT");
     }

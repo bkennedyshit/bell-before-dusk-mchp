@@ -1,5 +1,11 @@
 # Build Log
 
+## 2026-09-03 — Forge keeper counter occlusion
+
+- Corrected the smith's foreground mask to begin at the actual countertop lip rather than partway down the bench.
+- Raised her authored standing position behind the bench so her head and shoulders remain visible while her lower body is fully occluded by the workbench.
+- Verified the unobstructed forge view at an iPhone-sized viewport; she now reads as standing behind the counter instead of composited onto it.
+
 ## 2026-09-03 — Touch cardinal-path correction
 
 - Follow-up screenshots showed that optical sprite registration alone did not eliminate the visible track change during touch reversals: small horizontal thumb error was still accumulating as real world-X movement.
