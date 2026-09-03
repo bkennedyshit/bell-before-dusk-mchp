@@ -124,7 +124,7 @@
     const smithDoor = { x: 830, y: 695 };
     const innLanding = { x: 260, y: 735 };
     const smithLanding = { x: 830, y: 735 };
-    const innkeeper = { x: 180, y: 245 };
+    const innkeeper = { x: 180, y: 350 };
     const smithkeeper = { x: 180, y: 283 };
 
     let audio = null;
@@ -482,11 +482,11 @@
       if (game.scene !== "topdown") return null;
       const hero = game.hero;
       if (game.mapId === "inn") {
-        if (near(hero, innkeeper, 132)) return { label: "REST", type: "rest" };
+        if (near(hero, innkeeper, 68)) return { label: "REST", type: "rest" };
         return game.doorCooldown <= 0 && near(hero, { x: 180, y: 570 }, 64) ? { label: "EXIT", type: "leaveInn" } : null;
       }
       if (game.mapId === "smith") {
-        if (near(hero, smithkeeper, 132)) return { label: "TRADE", type: "shop" };
+        if (near(hero, smithkeeper, 92)) return { label: "TRADE", type: "shop" };
         return game.doorCooldown <= 0 && near(hero, { x: 180, y: 570 }, 64) ? { label: "EXIT", type: "leaveSmith" } : null;
       }
       if (game.mapId === "town") {
@@ -1817,8 +1817,9 @@
         ctx.fillRect(24, 96, 312, 540);
       }
       if (citizenVerticalAtlas) {
-        drawCitizenVerticalCell(4, 0, innkeeper.x, innkeeper.y + 7, 82);
-        redrawInteriorCounter(innInterior, 116, 345, 792, 120);
+        const baseline = innkeeper.y + 16;
+        drawGroundShadow(innkeeper.x, baseline, 15);
+        drawCitizenVerticalCell(4, 0, innkeeper.x, baseline, 82);
       }
       drawDoorPlaque(180, 579, "SOUTH EXIT");
     }

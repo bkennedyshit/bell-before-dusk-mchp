@@ -1,5 +1,12 @@
 # Build Log
 
+## 2026-09-03 — Interior keeper role correction
+
+- Kept the Sparrow Forge smith behind her true freestanding workbench, with the authored counter foreground hiding her lower body.
+- Moved the Crooked Carp innkeeper onto the open tatami because that room's bar reads as a wall fixture rather than a staffed freestanding counter.
+- Added a grounded shadow and a normal actor collision for the floor-standing innkeeper, and tightened REST to a real conversational distance while retaining a reachable interaction radius for the smith across her workbench.
+- Phone-viewport verification confirmed the innkeeper is approachable on the tatami with REST available at conversational range, while the smith remains visible and correctly occluded behind the forge bench; the temporary direct-room QA route was removed afterward.
+
 ## 2026-09-03 — Devpost thumbnail key art
 
 - Generated original 3:2 landscape contest key art using the production town, Yusuke, and yokai sheets as identity and palette references.
