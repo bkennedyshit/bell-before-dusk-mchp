@@ -1,0 +1,15 @@
+# Local tooling and generated output
+node_modules/
+dist/
+submission/
+*.zip
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+.phone-test.pid
+PHONE_TEST_URL.txt
+
+.vercel

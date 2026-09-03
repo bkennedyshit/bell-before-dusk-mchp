@@ -1,0 +1,31 @@
+BUILD_LOG.md
+README.md
+PHONE_TEST.md
+PHONE_TEST_URL.txt
+Start-Phone-Test.ps1
+Stop-Phone-Test.ps1
+.phone-test.pid
+.gitignore
+design/
+dist/
+
+# Local alternate encodes; the runtime uses the universal MP3 cuts.
+assets/audio/*.webm
+
+# Superseded environment artwork not referenced by index.html.
+assets/environment/cursed-shrine-v1.png
+assets/environment/edo-outskirts-v1.png
+assets/environment/edo-town-district-v3.png
+assets/environment/edo-town-panorama-v2.png
+assets/environment/forest-spirit-path-v1.png
+assets/environment/haunted-field-v1.png
+assets/environment/post-town-v1.png
+assets/environment/spirit-path-terrain-v2.png
+assets/environment/spirit-path-terrain-v5-clean.png
+
+# Superseded static character sheets replaced by grounded animation atlases.
+assets/characters/edo-citizens-v1.png
+assets/characters/town-npcs-v2.png
+assets/characters/town-npcs-study-v1.png
+assets/characters/town-services-v1.png
+assets/hero/samurai-courier-animation-study-v1.png

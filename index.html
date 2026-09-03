@@ -1,0 +1,3065 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+  <meta name="theme-color" content="#171722">
+  <title>Bell Before Dusk — Prototype</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #101018; }
+    body { display: grid; place-items: center; font-family: Georgia, "Times New Roman", serif; touch-action: none; }
+    #frame {
+      position: relative;
+      width: min(100vw, calc(100vh * 9 / 16));
+      height: min(100vh, calc(100vw * 16 / 9));
+      overflow: hidden;
+      background: #171722;
+      box-shadow: 0 0 0 1px #3c3945, 0 18px 80px #000b;
+    }
+    canvas { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+    #rotate {
+      display: none; position: fixed; inset: 0; z-index: 10; place-items: center;
+      padding: 32px; text-align: center; background: #16141d; color: #f5e8c8; font-size: 20px;
+    }
+    @media (orientation: landscape) and (max-height: 540px) { #rotate { display: grid; } }
+  </style>
+</head>
+<body>
+  <div id="frame"><canvas id="game" width="360" height="640" aria-label="Bell Before Dusk game"></canvas></div>
+  <div id="rotate">Bell Before Dusk is designed for portrait orientation.</div>
+  <script>
+  (() => {
+    "use strict";
+
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d", { alpha: false });
+    ctx.imageSmoothingEnabled = false;
+    const heroSheet = new Image();
+    heroSheet.src = "assets/hero/samurai-courier-sprites-v2.png";
+    const townPanorama = new Image();
+    townPanorama.src = "assets/environment/post-town-open-v4.png";
+    const spiritPathBackdrop = new Image();
+    spiritPathBackdrop.src = "assets/environment/spirit-path-platform-v2.png";
+    const spiritTerrainSheet = new Image();
+    spiritTerrainSheet.src = "assets/environment/spirit-path-terrain-v6-clean.png";
+    const outsideBackdrop = new Image();
+    outsideBackdrop.src = "assets/environment/haunted-field-open-v2.png";
+    const citizenWalkSheet = new Image();
+    let citizenWalkAtlas = null;
+    citizenWalkSheet.addEventListener("load", () => { citizenWalkAtlas = buildTransparentCitizenAtlas(citizenWalkSheet); });
+    citizenWalkSheet.src = "assets/characters/edo-citizens-sidewalk-v2.png";
+    const citizenPortraitSheet = new Image();
+    let citizenPortraitAtlas = null;
+    citizenPortraitSheet.addEventListener("load", () => { citizenPortraitAtlas = buildTransparentCitizenAtlas(citizenPortraitSheet); });
+    citizenPortraitSheet.src = "assets/characters/edo-citizens-v1.png";
+    const citizenVerticalSheet = new Image();
+    let citizenVerticalAtlas = null;
+    citizenVerticalSheet.addEventListener("load", () => {
+      citizenVerticalAtlas = buildTransparentCitizenAtlas(citizenVerticalSheet);
+      const cellHeight = Math.floor(citizenVerticalAtlas.height / 4);
+      citizenVerticalAtlas.getContext("2d").clearRect(
+        0,
+        cellHeight * 3 - 18,
+        citizenVerticalAtlas.width,
+        18
+      );
+    });
+    citizenVerticalSheet.src = "assets/characters/edo-citizens-verticalwalk-v1.png";
+    const banditWalkSheet = new Image();
+    let banditWalkAtlas = null;
+    banditWalkSheet.addEventListener("load", () => { banditWalkAtlas = buildTransparentCitizenAtlas(banditWalkSheet); });
+    banditWalkSheet.src = "assets/characters/edo-citizens-walk-v1.png";
+    const pathEnemySheet = new Image();
+    let pathEnemyAtlas = null;
+    pathEnemySheet.addEventListener("load", () => { pathEnemyAtlas = buildTransparentCitizenAtlas(pathEnemySheet); });
+    pathEnemySheet.src = "assets/characters/spirit-path-enemies-v1.png";
+    const yokaiSheet = new Image();
+    let yokaiAtlas = null;
+    yokaiSheet.addEventListener("load", () => { yokaiAtlas = buildTransparentCitizenAtlas(yokaiSheet); });
+    yokaiSheet.src = "assets/characters/edo-yokai-atlas-v3.png";
+    const innInterior = new Image();
+    innInterior.src = "assets/environment/crooked-carp-interior-v1.png";
+    const forgeInterior = new Image();
+    forgeInterior.src = "assets/environment/sparrow-forge-interior-v1.png";
+    const uiSkin = new Image();
+    uiSkin.src = "assets/ui/edo-ui-skin-v1.png";
+    const touchControls = new Image();
+    touchControls.src = "assets/ui/edo-touch-controls-v1.png";
+    const titleBackdrop = new Image();
+    titleBackdrop.src = "assets/ui/title-town-dusk-v2.png";
+    const titleButtonFrame = new Image();
+    titleButtonFrame.src = "assets/ui/title-begin-frame-v1.png";
+
+    const W = 360;
+    const H = 640;
+    const WORLD_H = 1200;
+    const TOWN_W = 1080;
+    const TOWN_Y = 480;
+    const FIELD_W = 720;
+    const FIELD_H = 1080;
+    const CAMERA_ZOOM = 1.14;
+    const SPIRIT_WORLD_W = 1320;
+    const SPIRIT_SEGMENTS = [
+      { start: 0, end: 220, y0: 500, y1: 500, art: 0 },
+      { start: 250, end: 430, y0: 520, y1: 455, art: 2 },
+      { start: 455, end: 670, y0: 455, y1: 455, art: 1 },
+      { start: 705, end: 900, y0: 520, y1: 445, art: 3 },
+      { start: 925, end: 1105, y0: 490, y1: 490, art: 0 },
+      { start: 1135, end: 1310, y0: 450, y1: 450, art: 1 }
+    ];
+    const keys = new Set();
+    const stick = { active: false, id: null, x: 57, y: 582, dx: 0, dy: 0, r: 36 };
+    const actionButton = { x: 304, y: 580, r: 37, down: false, id: null };
+    const contextButton = { x: 300, y: 506, r: 27, down: false, id: null };
+    const musicButton = { x: 342, y: 177, r: 18 };
+    const official = { x: 540, y: 828 };
+    const bell = { x: 965, y: 650, integrity: 100, maxIntegrity: 100, resonance: 0 };
+    const townGate = { x: 540, y: 620 };
+    const outsideGate = { x: 360, y: 970 };
+    const sealedGate = { x: 360, y: 112 };
+    const spiritTrail = { x: 620, y: 150 };
+    const innDoor = { x: 260, y: 695 };
+    const smithDoor = { x: 830, y: 695 };
+    const innLanding = { x: 260, y: 735 };
+    const smithLanding = { x: 830, y: 735 };
+    const innkeeper = { x: 180, y: 245 };
+    const smithkeeper = { x: 180, y: 283 };
+
+    let audio = null;
+    let music = null;
+    let musicTrack = "";
+    let musicMuted = false;
+    let musicFade = 0;
+    let musicDangerHold = 0;
+    let last = performance.now();
+    let cameraX = 360;
+    let cameraY = WORLD_H - H;
+    let screenShake = 0;
+    let message = "";
+    let messageTime = 0;
+    let objectiveTime = 0;
+    let particles = [];
+
+    const game = {
+      scene: "title",
+      phase: "town_intro",
+      run: 0,
+      elapsed: 0,
+      score: 0,
+      cedar: 0,
+      ash: 0,
+      mon: 0,
+      fog: 0,
+      runFogMod: 1,
+      fogWarning: 0,
+      fogPainClock: 0,
+      fogPhase: "clear",
+      fogPhaseClock: 0,
+      fogFront: 0,
+      hasKatana: false,
+      banditFled: false,
+      chaseComplete: false,
+      outsideVisited: false,
+      objective: "",
+      upgrades: [],
+      upgradeOptions: [],
+      spawnClock: 0,
+      breachTime: 0,
+      bossSpawned: false,
+      bossDefeated: false,
+      ringCooldown: 0,
+      outcome: "",
+      defeatCause: "",
+      tapTarget: null,
+      mapId: "town",
+      pendingRun: 0,
+      returnPoint: null,
+      returnObjective: "",
+      doorCooldown: 0,
+      shopOwned: [],
+      smokeCharm: false,
+      hero: null,
+      enemies: [],
+      nodes: [],
+      platform: null,
+      residents: []
+    };
+
+    function resetGame() {
+      Object.assign(game, {
+        scene: "topdown", phase: "town_intro", run: 0, elapsed: 0, score: 0,
+        cedar: 0, ash: 0, mon: 0, fog: 0, runFogMod: 1, fogWarning: 0, fogPainClock: 0,
+        fogPhase: "clear", fogPhaseClock: 0, fogFront: 0, hasKatana: false,
+        banditFled: false, chaseComplete: false, outsideVisited: false, upgrades: [], upgradeOptions: [],
+        spawnClock: 0, breachTime: 0, bossSpawned: false, bossDefeated: false,
+        ringCooldown: 0, outcome: "", defeatCause: "", tapTarget: null, mapId: "town", pendingRun: 0,
+        returnPoint: null, returnObjective: "", doorCooldown: 0, shopOwned: [], smokeCharm: false,
+        enemies: [], nodes: [], platform: null, residents: makeResidents()
+      });
+      game.hero = {
+        x: 540, y: 888, r: 11, moveR: 7, hp: 100, maxHp: 100,
+        speed: 114, damage: 1, gather: 1, fogRate: 1,
+        attackCooldown: 0, attackFx: 0, facingX: 0, facingY: -1,
+        invulnerable: 0, moving: false, killHeal: 0
+      };
+      bell.integrity = bell.maxIntegrity = 100;
+      bell.resonance = 0;
+      particles = [];
+      cameraX = 382;
+      cameraY = 488;
+      setObjective("Talk to the town official");
+      say("Official: Recover the clapper, gather cedar and ash, then strengthen the bell before dusk.", 5);
+    }
+
+    function makeResidents() {
+      return [
+        { x: 170, y: 790, axis: "x", low: 80, high: 390, dir: 1, speed: 30, column: 1, row: 0, role: "FISHERMAN", line: "Fisherman: The inn is west. The forge is east. The fish refuse to choose sides." },
+        { x: 350, y: 805, axis: "y", low: 745, high: 945, dir: 1, speed: 24, column: 4, row: 0, role: "MERCHANT", line: "Merchant: Cedar fiber binds the ward repairs. Ash makes the binding hold." },
+        { x: 850, y: 790, axis: "y", low: 740, high: 935, dir: -1, speed: 27, column: 2, row: 0, role: "TOWNSWOMAN", line: "Townswoman: The smith sharpens steel. Her conversation is less polished." }
+      ];
+    }
+
+    function setObjective(value) {
+      if (game.objective !== value) objectiveTime = 4.5;
+      game.objective = value;
+    }
+    function say(value, seconds = 2.8) { message = value; messageTime = Math.min(seconds, 3.6); }
+    function clamp(value, low, high) { return Math.max(low, Math.min(high, value)); }
+    function near(a, b, radius) { return Math.hypot(a.x - b.x, a.y - b.y) <= radius; }
+    function inCircle(x, y, circle) { return Math.hypot(x - circle.x, y - circle.y) <= circle.r; }
+
+    function buildTransparentCitizenAtlas(image, removeEnclosed = false) {
+      const atlas = document.createElement("canvas");
+      atlas.width = image.naturalWidth;
+      atlas.height = image.naturalHeight;
+      const atlasCtx = atlas.getContext("2d", { willReadFrequently: true });
+      atlasCtx.drawImage(image, 0, 0);
+      const pixels = atlasCtx.getImageData(0, 0, atlas.width, atlas.height);
+      const data = pixels.data;
+      const width = atlas.width;
+      const height = atlas.height;
+      const total = width * height;
+      const visited = new Uint8Array(total);
+      const queue = new Int32Array(total);
+      let head = 0;
+      let tail = 0;
+      const isMatte = index => {
+        const offset = index * 4;
+        const r = data[offset], g = data[offset + 1], b = data[offset + 2];
+        return Math.min(r, g, b) > 225 && Math.max(r, g, b) - Math.min(r, g, b) < 14;
+      };
+      if (removeEnclosed) {
+        for (let index = 0; index < total; index++) if (isMatte(index)) data[index * 4 + 3] = 0;
+        atlasCtx.putImageData(pixels, 0, 0);
+        return atlas;
+      }
+      const enqueue = index => {
+        if (index < 0 || index >= total || visited[index] || !isMatte(index)) return;
+        visited[index] = 1;
+        queue[tail++] = index;
+      };
+      for (let x = 0; x < width; x++) { enqueue(x); enqueue((height - 1) * width + x); }
+      for (let y = 1; y < height - 1; y++) { enqueue(y * width); enqueue(y * width + width - 1); }
+      while (head < tail) {
+        const index = queue[head++];
+        data[index * 4 + 3] = 0;
+        const x = index % width;
+        if (x > 0) enqueue(index - 1);
+        if (x < width - 1) enqueue(index + 1);
+        if (index >= width) enqueue(index - width);
+        if (index < total - width) enqueue(index + width);
+      }
+      atlasCtx.putImageData(pixels, 0, 0);
+      return atlas;
+    }
+
+    function startAudio() {
+      if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+      if (audio.state === "suspended") audio.resume();
+      if (!music) {
+        music = new Audio();
+        music.loop = true;
+        music.preload = "auto";
+        music.playsInline = true;
+        music.volume = 0;
+      }
+      if (!musicTrack) setMusicTrack(desiredMusicTrack());
+      else music.play().catch(() => {});
+    }
+
+    const MUSIC_TRACKS = {
+      town: "assets/audio/town-sun-over-gate.mp3",
+      field: "assets/audio/field-sunlight-blade.mp3",
+      chase: "assets/audio/spirit-kinetic-chase.mp3",
+      danger: "assets/audio/danger-kinetic-protocol.mp3",
+      breach: "assets/audio/breach-shattered-ceiling.mp3"
+    };
+
+    function desiredMusicTrack() {
+      if (game.scene === "outcome") return game.outcome === "victory" ? "town" : "";
+      if (game.scene === "title") return "town";
+      if (game.phase === "breach") return "breach";
+      if (game.scene === "platform") return "chase";
+      if (game.mapId === "outside") return musicDangerHold > 0 ? "danger" : "field";
+      return "town";
+    }
+
+    function setMusicTrack(key) {
+      if (!music || key === musicTrack) return;
+      musicTrack = key;
+      musicFade = 0;
+      music.pause();
+      if (!key || !MUSIC_TRACKS[key]) {
+        music.removeAttribute("src");
+        return;
+      }
+      music.src = MUSIC_TRACKS[key];
+      music.currentTime = 0;
+      music.volume = 0;
+      music.play().catch(() => {});
+    }
+
+    function updateMusic(dt) {
+      if (game.scene === "topdown" && game.mapId === "outside" && game.hero) {
+        const threatNear = game.enemies.some(enemy => !enemy.dead && Math.hypot(enemy.x - game.hero.x, enemy.y - game.hero.y) < 175);
+        musicDangerHold = threatNear ? 2.8 : Math.max(0, musicDangerHold - dt);
+      } else musicDangerHold = 0;
+      if (!music) return;
+      const wanted = desiredMusicTrack();
+      if (wanted !== musicTrack) setMusicTrack(wanted);
+      musicFade = Math.min(1, musicFade + dt * 1.8);
+      music.volume = musicMuted ? 0 : 0.44 * musicFade;
+      canvas.dataset.musicTrack = musicTrack;
+      canvas.dataset.musicMuted = String(musicMuted);
+      canvas.dataset.musicReady = String(music.readyState);
+    }
+
+    function toggleMusic() {
+      musicMuted = !musicMuted;
+      if (music) music.volume = musicMuted ? 0 : 0.44 * musicFade;
+      say(musicMuted ? "Music muted" : "Music restored", 1.2);
+    }
+
+    function sfx(type) {
+      if (!audio) return;
+      const tones = {
+        slash: [220, 105, 0.07, "sawtooth"], hit: [100, 55, 0.08, "square"],
+        pickup: [520, 820, 0.11, "triangle"], hurt: [140, 65, 0.14, "square"],
+        upgrade: [330, 900, 0.36, "triangle"], jump: [240, 430, 0.1, "square"],
+        bell: [392, 196, 0.55, "sine"], lose: [170, 55, 0.6, "sawtooth"],
+        win: [440, 980, 0.7, "triangle"]
+      };
+      const tone = tones[type] || tones.pickup;
+      const osc = audio.createOscillator();
+      const gain = audio.createGain();
+      const now = audio.currentTime;
+      osc.type = tone[3];
+      osc.frequency.setValueAtTime(tone[0], now);
+      osc.frequency.exponentialRampToValueAtTime(tone[1], now + tone[2]);
+      gain.gain.setValueAtTime(0.08, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + tone[2]);
+      osc.connect(gain).connect(audio.destination);
+      osc.start(now);
+      osc.stop(now + tone[2]);
+    }
+
+    function pointerPos(event) {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: (event.clientX - rect.left) * W / rect.width,
+        y: (event.clientY - rect.top) * H / rect.height
+      };
+    }
+
+    canvas.addEventListener("pointerdown", event => {
+      event.preventDefault();
+      startAudio();
+      canvas.setPointerCapture(event.pointerId);
+      const p = pointerPos(event);
+      if (game.scene === "title" || game.scene === "outcome") { resetGame(); return; }
+      if (inCircle(p.x, p.y, musicButton)) { toggleMusic(); return; }
+      if (game.scene === "repair") { chooseRepairAt(p.x, p.y); return; }
+      if (game.scene === "shop") { chooseShopAt(p.x, p.y); return; }
+      if (p.x < 160 && p.y > 480) {
+        stick.active = true;
+        stick.id = event.pointerId;
+        updateStick(p.x, p.y);
+      } else if (game.scene === "platform" && inCircle(p.x, p.y, contextButton)) {
+        contextButton.down = true;
+        contextButton.id = event.pointerId;
+        doAttack();
+      } else if (inCircle(p.x, p.y, actionButton)) {
+        actionButton.down = true;
+        actionButton.id = event.pointerId;
+        if (game.scene === "platform") doJump();
+        else doAttack();
+      } else if (game.scene === "topdown" && contextAction() && inCircle(p.x, p.y, contextButton)) {
+        contextButton.down = true;
+        contextButton.id = event.pointerId;
+        doInteract();
+      } else if (game.scene === "topdown") {
+        const zoom = (game.mapId === "inn" || game.mapId === "smith") ? 1 : CAMERA_ZOOM;
+        game.tapTarget = { x: p.x / zoom + cameraX, y: p.y / zoom + cameraY };
+      }
+    });
+
+    canvas.addEventListener("pointermove", event => {
+      if (!stick.active || stick.id !== event.pointerId) return;
+      const p = pointerPos(event);
+      updateStick(p.x, p.y);
+    });
+
+    function releasePointer(event) {
+      if (stick.id === event.pointerId) {
+        stick.active = false; stick.id = null; stick.dx = 0; stick.dy = 0;
+      }
+      if (actionButton.id === event.pointerId) {
+        actionButton.down = false; actionButton.id = null;
+      }
+      if (contextButton.id === event.pointerId) {
+        contextButton.down = false; contextButton.id = null;
+      }
+    }
+    canvas.addEventListener("pointerup", releasePointer);
+    canvas.addEventListener("pointercancel", releasePointer);
+
+    function updateStick(x, y) {
+      const dx = x - stick.x;
+      const dy = y - stick.y;
+      const magnitude = Math.hypot(dx, dy) || 1;
+      const scale = Math.min(stick.r, magnitude) / magnitude;
+      stick.dx = dx * scale / stick.r;
+      stick.dy = dy * scale / stick.r;
+    }
+
+    addEventListener("keydown", event => {
+      keys.add(event.key.toLowerCase());
+      if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(event.key.toLowerCase())) event.preventDefault();
+      if (event.key === " " && !event.repeat) {
+        startAudio();
+        if (game.scene === "title" || game.scene === "outcome") resetGame();
+        else if (game.scene === "platform") doJump();
+        else doAttack();
+      }
+      if (event.key.toLowerCase() === "j" && !event.repeat) doAttack();
+      if (event.key.toLowerCase() === "m" && !event.repeat) { startAudio(); toggleMusic(); }
+      if (event.key.toLowerCase() === "e" && !event.repeat) {
+        if (game.scene === "shop") closeShop();
+        else doInteract();
+      }
+      if (game.scene === "repair" && ["1", "2"].includes(event.key)) chooseRepair(Number(event.key) - 1);
+      if (game.scene === "shop" && ["1", "2"].includes(event.key)) chooseShop(Number(event.key) - 1);
+      if (game.scene === "shop" && event.key.toLowerCase() === "escape") closeShop();
+    });
+    addEventListener("keyup", event => keys.delete(event.key.toLowerCase()));
+
+    function movementInput() {
+      let x = stick.dx;
+      let y = stick.dy;
+      if (keys.has("a") || keys.has("arrowleft")) x -= 1;
+      if (keys.has("d") || keys.has("arrowright")) x += 1;
+      if (keys.has("w") || keys.has("arrowup")) y -= 1;
+      if (keys.has("s") || keys.has("arrowdown")) y += 1;
+      const magnitude = Math.hypot(x, y);
+      return magnitude > 1 ? { x: x / magnitude, y: y / magnitude } : { x, y };
+    }
+
+    function doAttack() {
+      if (game.scene === "platform") { platformSlash(); return; }
+      if (game.scene !== "topdown") return;
+      if (game.hasKatana) slash();
+      else say("Talk to the official. He has your katana and several opinions.");
+    }
+
+    function doJump() {
+      if (game.scene !== "platform") return;
+      platformJump();
+    }
+
+    function contextAction() {
+      if (game.scene !== "topdown") return null;
+      const hero = game.hero;
+      if (game.mapId === "inn") {
+        if (near(hero, innkeeper, 132)) return { label: "REST", type: "rest" };
+        return game.doorCooldown <= 0 && near(hero, { x: 180, y: 570 }, 64) ? { label: "EXIT", type: "leaveInn" } : null;
+      }
+      if (game.mapId === "smith") {
+        if (near(hero, smithkeeper, 132)) return { label: "TRADE", type: "shop" };
+        return game.doorCooldown <= 0 && near(hero, { x: 180, y: 570 }, 64) ? { label: "EXIT", type: "leaveSmith" } : null;
+      }
+      if (game.mapId === "town") {
+        if (game.phase === "town_intro" && near(hero, official, 64)) return { label: "TALK", type: "official" };
+        if (game.phase !== "town_intro" && game.phase !== "breach" && near(hero, official, 54)) return { label: "TALK", type: "officialAgain" };
+        if (["chase_gate", "town_gate", "town_gate2"].includes(game.phase) && near(hero, townGate, 76)) return { label: "ENTER", type: "enterGate" };
+        if (game.doorCooldown <= 0 && game.phase !== "breach" && near(hero, innDoor, 62)) return { label: "ENTER", type: "enterInn" };
+        if (game.doorCooldown <= 0 && game.phase !== "breach" && near(hero, smithDoor, 62)) return { label: "ENTER", type: "enterSmith" };
+        if (game.phase === "breach" && near(hero, bell, 70)) return { label: "RING", type: "ring" };
+        const resident = game.residents.find(person => near(hero, person, 48));
+        if (resident) return { label: "TALK", type: "resident", resident };
+      }
+      if (game.mapId === "outside") {
+        if (game.phase === "chase_field" && near(hero, spiritTrail, 76)) return { label: "CHASE", type: "spiritTrail" };
+        if ((game.phase === "run1" || game.phase === "run2") && near(hero, spiritTrail, 76)) return { label: "PATH", type: "revisitPath" };
+        if (near(hero, sealedGate, 70)) return { label: "SEALED", type: "sealedGate" };
+        if (game.phase === "post_chase_field" && near(hero, outsideGate, 78)) return { label: "TOWN", type: "returnAfterChase" };
+        if ((game.phase === "run1" || game.phase === "run2") && near(hero, outsideGate, 78)) return { label: "RETURN", type: "returnGate" };
+        const node = game.nodes.find(item => item.active && near(hero, item, 58));
+        if (node) return { label: "GATHER", type: "gather", node };
+      }
+      return null;
+    }
+
+    function doInteract() {
+      const action = contextAction();
+      if (!action) { say("Nothing to use here.", 1.4); return; }
+      if (action.type === "official") {
+        game.hasKatana = true;
+        game.phase = "town_escape";
+        const runner = spawnEnemy("bandit", 650, 800);
+        runner.state = "escapeTown";
+        runner.route = [[590, 800], [540, 720], [540, 620]];
+        runner.routeIndex = 0;
+        setObjective("The clapper thief is escaping through North Gate");
+        say("Official: That runner has the clapper—and he is heading for North Gate. After him!", 5);
+        sfx("upgrade");
+      } else if (action.type === "officialAgain") {
+        say(game.phase === "town_escape" || game.phase === "chase_gate"
+          ? "Official: North Gate. The rapidly disappearing criminal should narrow it down."
+          : "Official: North Gate. Fog. Cedar. Ash. I have now exhausted my useful vocabulary.", 4);
+      } else if (action.type === "spiritTrail") startPlatform();
+      else if (action.type === "revisitPath") startPlatform(true);
+      else if (action.type === "enterGate") {
+        if (game.phase === "chase_gate") beginChaseField();
+        else beginRun(game.phase === "town_gate2" ? 2 : 1);
+      }
+      else if (action.type === "enterInn") enterInn();
+      else if (action.type === "leaveInn") leaveInn();
+      else if (action.type === "enterSmith") enterSmith();
+      else if (action.type === "leaveSmith") leaveSmith();
+      else if (action.type === "rest") restAtInn();
+      else if (action.type === "shop") openShop();
+      else if (action.type === "resident") say(action.resident.line, 3.4);
+      else if (action.type === "sealedGate") say(game.chaseComplete
+        ? "The northern ward gate is sealed in this prototype. The forest remains hostile behind you."
+        : "A ward lock bars the northern gate. The thief cut toward the torii trail instead.", 4);
+      else if (action.type === "gather") gatherNode(action.node);
+      else if (action.type === "returnAfterChase") returnToTownAfterChase();
+      else if (action.type === "returnGate") {
+        if (canReturn()) openRepair();
+        else {
+          const need = runRequirement(game.run);
+          say(`Still need ${Math.max(0, need.cedar - game.cedar)} cedar and ${Math.max(0, need.ash - game.ash)} ash.`);
+        }
+      } else if (action.type === "ring") ringBell();
+    }
+
+    function enterInn() {
+      game.mapId = "inn";
+      game.returnPoint = { x: game.hero.x, y: game.hero.y };
+      game.returnObjective = game.objective;
+      game.hero.x = 180; game.hero.y = 520;
+      stopHeroTravel();
+      game.doorCooldown = 0.65;
+      cameraX = 0; cameraY = 0;
+      setObjective("Rest at the counter, or leave through the south door");
+      say("Innkeeper: One mon buys rice, a bath, and the right to stop bleeding on my floor.", 4);
+    }
+
+    function leaveInn() {
+      game.mapId = "town";
+      game.hero.x = innLanding.x;
+      game.hero.y = innLanding.y;
+      stopHeroTravel();
+      game.returnPoint = null;
+      game.doorCooldown = 0.85;
+      cameraX = clamp(game.hero.x - W / 2, 0, TOWN_W - W);
+      cameraY = 488;
+      setObjective(game.returnObjective || "Return to the north gate");
+      say("Back outside the Crooked Carp.", 1.8);
+    }
+
+    function enterSmith() {
+      game.mapId = "smith";
+      game.returnPoint = { x: game.hero.x, y: game.hero.y };
+      game.returnObjective = game.objective;
+      game.hero.x = 180; game.hero.y = 520;
+      stopHeroTravel();
+      game.doorCooldown = 0.65;
+      cameraX = 0; cameraY = 0;
+      setObjective("Trade at the forge, or leave through the south door");
+      say("Smith: I sharpen swords and sell charms. I do not explain where the charms come from.", 4);
+    }
+
+    function leaveSmith() {
+      game.mapId = "town";
+      game.hero.x = smithLanding.x;
+      game.hero.y = smithLanding.y;
+      stopHeroTravel();
+      game.returnPoint = null;
+      game.doorCooldown = 0.85;
+      cameraX = clamp(game.hero.x - W / 2, 0, TOWN_W - W);
+      cameraY = 488;
+      setObjective(game.returnObjective || "Return to the north gate");
+      say("Back outside Sparrow Forge.", 1.8);
+    }
+
+    function stopHeroTravel() {
+      game.tapTarget = null;
+      stick.active = false;
+      stick.id = null;
+      stick.dx = 0;
+      stick.dy = 0;
+      if (game.hero) game.hero.moving = false;
+    }
+
+    function restAtInn() {
+      if (game.hero.hp >= game.hero.maxHp) { say("Innkeeper: You are already healthy. Disturbing, but healthy."); return; }
+      if (game.mon < 1) { say("Innkeeper: One mon. Sympathy is not accepted as currency."); sfx("hurt"); return; }
+      game.mon -= 1;
+      game.hero.hp = game.hero.maxHp;
+      game.score += 50;
+      sfx("upgrade");
+      say("Rested: health fully restored.");
+    }
+
+    function shopOptions() {
+      return [
+        { name: "Whetstone Service", detail: "+1 katana damage this session", mon: 3, id: "whetstone", oneTime: true },
+        { name: "Fox-Smoke Charm", detail: "Fog fronts build 22% slower next expedition", mon: 2, id: "smoke", oneTime: false }
+      ];
+    }
+
+    function openShop() {
+      game.scene = "shop";
+      say("Spend mon earned by taking risks. Cedar and spirit ash cannot be bought.", 4);
+    }
+
+    function closeShop() {
+      game.scene = "topdown";
+      say("Smith: If the charm starts whispering, that costs extra.", 2.6);
+    }
+
+    function chooseShopAt(x, y) {
+      if (x > 22 && x < 338 && y > 184 && y < 352) chooseShop(0);
+      else if (x > 22 && x < 338 && y > 364 && y < 534) chooseShop(1);
+      else if (x > 34 && x < 326 && y > 548 && y < 626) closeShop();
+    }
+
+    function chooseShop(index) {
+      const option = shopOptions()[index];
+      if (!option) return;
+      if (option.id === "smoke" && game.smokeCharm) {
+        say("Fox-smoke is already prepared for the next expedition.");
+        return;
+      }
+      if (option.oneTime && game.shopOwned.includes(option.id)) {
+        say("Already purchased for this session.");
+        return;
+      }
+      if (game.mon < option.mon) {
+        say(`Need ${option.mon - game.mon} more mon. Yokai and path guards carry it.`);
+        sfx("hurt");
+        return;
+      }
+      game.mon -= option.mon;
+      if (option.oneTime) game.shopOwned.push(option.id);
+      if (option.id === "whetstone") game.hero.damage += 1;
+      if (option.id === "smoke") game.smokeCharm = true;
+      game.score += 80;
+      sfx("upgrade");
+      say(`${option.name} purchased.`);
+    }
+
+    function nearestEnemy(radius) {
+      const hero = game.hero;
+      return game.enemies
+        .filter(enemy => !enemy.dead && near(hero, enemy, radius))
+        .sort((a, b) => Math.hypot(hero.x - a.x, hero.y - a.y) - Math.hypot(hero.x - b.x, hero.y - b.y))[0];
+    }
+
+    function slash() {
+      const hero = game.hero;
+      if (hero.attackCooldown > 0) return;
+      const target = nearestEnemy(62);
+      if (target) {
+        const distance = Math.hypot(target.x - hero.x, target.y - hero.y) || 1;
+        hero.facingX = (target.x - hero.x) / distance;
+        hero.facingY = (target.y - hero.y) / distance;
+      }
+      hero.attackCooldown = 0.34;
+      hero.attackFx = 0.24;
+      sfx("slash");
+      let struck = false;
+      for (const enemy of game.enemies) {
+        if (enemy.dead) continue;
+        if (enemy.type === "bandit" && (game.phase === "town_escape" || game.phase === "chase_field")) continue;
+        const dx = enemy.x - hero.x;
+        const dy = enemy.y - hero.y;
+        const distance = Math.hypot(dx, dy);
+        const facing = (dx * hero.facingX + dy * hero.facingY) / (distance || 1);
+        if (distance < 56 && facing > -0.15) {
+          enemy.hp -= hero.damage;
+          enemy.x += hero.facingX * 18;
+          enemy.y += hero.facingY * 18;
+          enemy.flash = 0.13;
+          struck = true;
+          screenShake = 4;
+          burst(enemy.x, enemy.y, "#fff2d0", 9);
+          if (enemy.hp <= 0) killEnemy(enemy);
+        }
+      }
+      if (struck) sfx("hit");
+    }
+
+    function gatherNode(node) {
+      node.active = false;
+      game.cedar += game.hero.gather;
+      game.score += 25 * game.hero.gather;
+      burst(node.x, node.y, "#d7c267", 13);
+      say(`Cedar fiber +${game.hero.gather} — combine it with spirit ash to build a bell repair.`);
+      sfx("pickup");
+    }
+
+    function enemyStats(type) {
+      return {
+        bandit: [2, 54, 0, 12],
+        wisp: [2 + game.run, 34 + game.run * 4, 5, 11],
+        prowler: [3 + game.run, 52, 7, 13],
+        raider: [4, 42, 8, 13],
+        boss: [16, 30, 12, 25]
+      }[type];
+    }
+
+    function spawnEnemy(type, x = 45 + Math.random() * 270, y = 180) {
+      const stats = enemyStats(type);
+      const enemy = {
+        x, y, type, hp: stats[0], maxHp: stats[0], speed: stats[1],
+        damage: stats[2], r: stats[3], moveR: Math.max(7, stats[3] * 0.65), hitClock: 0, flash: 0,
+        dead: false, boss: type === "boss", seed: Math.random() * 20,
+        state: type === "bandit" ? "patrol" : "wander", stateClock: 0.6 + Math.random(),
+        animDistance: 0, facingX: 0
+      };
+      game.enemies.push(enemy);
+      return enemy;
+    }
+
+    function killEnemy(enemy) {
+      if (enemy.dead) return;
+      enemy.dead = true;
+      if (enemy.type === "bandit") {
+        game.banditFled = true;
+        game.mon += 1;
+        game.phase = "town_gate";
+        setObjective("Take the recovered clapper through North Gate");
+        say("Thief: Keep the clapper! I am changing careers to something safer, like fireworks.", 4);
+        burst(enemy.x, enemy.y, "#d39a58", 16);
+        sfx("upgrade");
+        return;
+      }
+      const reward = enemy.boss ? 4 : 1;
+      const monReward = enemy.boss ? 3 : 1;
+      game.ash += reward;
+      game.mon += monReward;
+      if (game.hero.killHeal > 0) game.hero.hp = Math.min(game.hero.maxHp, game.hero.hp + game.hero.killHeal);
+      game.score += enemy.boss ? 1200 : 90;
+      burst(enemy.x, enemy.y, enemy.boss ? "#f1c451" : "#7ed9cc", enemy.boss ? 40 : 18);
+      if (enemy.boss) {
+        game.bossDefeated = true;
+        setObjective("Ring the ward bell to full resonance");
+        say("The gate yokai is broken. Finish the ward with the bell!", 4);
+        if (bell.resonance >= 100) finish("victory");
+      } else say(`Spirit ash +${reward} • Mon +${monReward}`);
+    }
+
+    function startPlatform(revisit = false) {
+      const returnState = revisit ? {
+        phase: game.phase,
+        run: game.run,
+        fog: game.fog,
+        fogPhase: game.fogPhase,
+        fogPhaseClock: game.fogPhaseClock,
+        fogFront: game.fogFront,
+        fogWarning: game.fogWarning,
+        spawnClock: game.spawnClock,
+        outsideVisited: game.outsideVisited,
+        objective: game.objective,
+        enemies: game.enemies,
+        nodes: game.nodes
+      } : null;
+      game.scene = "platform";
+      game.phase = revisit ? "spirit_replay" : "spirit_chase";
+      game.enemies = [];
+      const goons = [
+        { x: 330, y: 491, dead: false, hp: 1, maxHp: 1, dir: 1, left: 285, right: 405, telegraph: 0, cooldown: 0, thief: false, variant: 0 },
+        { x: 575, y: 455, dead: false, hp: 1, maxHp: 1, dir: -1, left: 490, right: 640, telegraph: 0, cooldown: 0, thief: false, variant: 1 },
+        { x: 1010, y: 490, dead: false, hp: 1, maxHp: 1, dir: 1, left: 950, right: 1080, telegraph: 0, cooldown: 0, thief: false, variant: 0 }
+      ];
+      if (!revisit) goons.push({ x: 1220, y: 450, dead: false, hp: 3, maxHp: 3, dir: -1, left: 1165, right: 1270, telegraph: 0, cooldown: 0, thief: true, variant: 2 });
+      game.platform = {
+        x: 34, y: 482, vx: 0, vy: 0, grounded: true, facing: 1, camera: 0,
+        slash: 0, checkpoint: 34, revisit, returnState, goons,
+        shrineX: 1290
+      };
+      setObjective(revisit ? "Optional Spirit Path • defeat three guards for mon" : "Defeat three guards, then corner the clapper thief");
+      say(revisit
+        ? "Spirit Path reopened. Cross it for guard money; the far torii returns you to the same field run."
+         : "The thief fled onto the Forest Spirit Path. Clear his guards and finish the chase at the far torii.", 5);
+    }
+
+    function beginChaseField() {
+      Object.assign(game, {
+        scene: "topdown", phase: "chase_field", run: 0, mapId: "outside",
+        enemies: [], nodes: [], fog: 0, spawnClock: 0
+      });
+      game.hero.x = outsideGate.x;
+      game.hero.y = outsideGate.y - 76;
+      const runner = spawnEnemy("bandit", 360, 820);
+      runner.state = "escapeField";
+      runner.route = [[360, 760], [350, 650], [365, 580], [340, 500], [420, 460], [520, 420], [560, 350], [500, 290], [540, 250], [578, 200]];
+      runner.routeIndex = 0;
+      spawnEnemy("wisp", 445, 600);
+      spawnEnemy("prowler", 555, 390);
+      cameraX = clamp(game.hero.x - W / (2 * CAMERA_ZOOM), 0, FIELD_W - W / CAMERA_ZOOM);
+      cameraY = 520;
+      setObjective("Chase the thief across the haunted field to the torii trail");
+      say("Beyond North Gate: the thief is cutting through a demon-haunted field. Follow him; the stone gate is sealed.", 5);
+    }
+
+    function finishPlatformChase() {
+      Object.assign(game, {
+        scene: "topdown", phase: "post_chase_field", mapId: "outside",
+        enemies: [], nodes: [], platform: null, banditFled: true, chaseComplete: true
+      });
+      game.hero.x = spiritTrail.x;
+      game.hero.y = spiritTrail.y + 58;
+      cameraX = clamp(game.hero.x - W / (2 * CAMERA_ZOOM), 0, FIELD_W - W / CAMERA_ZOOM);
+      cameraY = 0;
+      game.mon += 2;
+      game.score += 600;
+      setObjective("Clapper recovered • walk south and return through the town gate");
+      say("Thief: Fine! Take the clapper. I am retiring somewhere without bells. Return to town through the south gate.", 5);
+      sfx("upgrade");
+    }
+
+    function finishPlatformReplay() {
+      const state = game.platform?.returnState;
+      if (!state) return;
+      Object.assign(game, {
+        scene: "topdown", mapId: "outside", phase: state.phase, run: state.run,
+        fog: state.fog, fogPhase: state.fogPhase, fogPhaseClock: state.fogPhaseClock,
+        fogFront: state.fogFront, fogWarning: state.fogWarning, spawnClock: state.spawnClock,
+        outsideVisited: state.outsideVisited, enemies: state.enemies, nodes: state.nodes, platform: null
+      });
+      game.hero.x = spiritTrail.x;
+      game.hero.y = spiritTrail.y + 58;
+      cameraX = clamp(game.hero.x - W / (2 * CAMERA_ZOOM), 0, FIELD_W - W / CAMERA_ZOOM);
+      cameraY = 0;
+      setObjective(state.objective);
+      say("Spirit Path cleared • guard mon banked. The expedition resumes where you left it.", 4);
+      sfx("upgrade");
+    }
+
+    function returnToTownAfterChase() {
+      Object.assign(game, {
+        scene: "topdown", mapId: "town", phase: "town_gate", enemies: [], nodes: [], run: 0
+      });
+      game.hero.x = townGate.x;
+      game.hero.y = townGate.y + 115;
+      cameraX = 382;
+      cameraY = TOWN_Y;
+      setObjective("Clapper secured • heal, upgrade, or re-enter North Gate for supplies");
+      say("Back in Post Town. The field is now open as a demon-resource run; the far stone gate stays sealed for the demo.", 5);
+    }
+
+    function platformJump() {
+      const p = game.platform;
+      if (!p) return;
+      if (p.grounded) {
+        p.vy = -330;
+        if (Math.abs(p.vx) < 70) p.vx = (p.facing || 1) * 92;
+        p.grounded = false;
+        sfx("jump");
+      }
+    }
+
+    function platformSlash() {
+      const p = game.platform;
+      if (!p || p.slash > 0) return;
+      p.slash = 0.28;
+      if (!p.grounded) p.vx += (p.facing || 1) * 34;
+      sfx("slash");
+    }
+
+    function beginRun(number) {
+      Object.assign(game, {
+        scene: "topdown", phase: number === 1 ? "run1" : "run2", run: number,
+        mapId: "outside", pendingRun: 0,
+        fog: 0, runFogMod: game.smokeCharm ? 0.78 : 1, fogWarning: 0, fogPainClock: 1.2,
+        fogPhase: "clear", fogPhaseClock: number === 1 ? 20 : 14, fogFront: 0, outsideVisited: false,
+        spawnClock: number === 1 ? 4 : 2.5, enemies: [], nodes: makeNodes(number)
+      });
+      game.hero.x = outsideGate.x;
+      game.hero.y = outsideGate.y - 76;
+      const charmActive = game.smokeCharm;
+      game.smokeCharm = false;
+      cameraX = clamp(game.hero.x - W / (2 * CAMERA_ZOOM), 0, FIELD_W - W / CAMERA_ZOOM);
+      cameraY = 520;
+      const need = runRequirement(number);
+      setObjective(number === 1
+        ? `${need.cedar} cedar + ${need.ash} ash • gather while the field is clear`
+        : `${need.cedar} cedar + ${need.ash} ash • survive the harder field`);
+      say(charmActive
+        ? "Fox-smoke active. Gather marked cedar, defeat yokai for ash, then retreat."
+        : number === 1
+          ? "The field clears between fog fronts. Gather cedar and ash, then retreat when the wind goes silent."
+          : "The second expedition has shorter clear breaks and stronger fog fronts. Use the quiet time well.", 5);
+    }
+
+    function makeNodes(number) {
+      const positions = number === 1
+        ? [[360, 850], [350, 750], [400, 610], [365, 540], [330, 450], [520, 300]]
+        : [[385, 850], [350, 730], [430, 600], [450, 560], [330, 475], [560, 380], [550, 280], [580, 170]];
+      return positions.map(([x, y]) => ({ x, y, active: true, pulse: Math.random() * 6.28 }));
+    }
+
+    function runRequirement(number) {
+      return number === 1 ? { cedar: 3, ash: 2 } : { cedar: 4, ash: 3 };
+    }
+
+    function canReturn() {
+      const need = runRequirement(game.run);
+      return game.cedar >= need.cedar && game.ash >= need.ash;
+    }
+
+    function openRepair() {
+      game.scene = "repair";
+      game.enemies = [];
+      game.phase = game.run === 1 ? "repair1" : "repair2";
+      game.upgradeOptions = game.run === 1 ? [
+        { name: "Braided Ward Rope", detail: "Fog fronts build 25% slower", cedar: 3, ash: 2, id: "rope" },
+        { name: "Tempered Clapper", detail: "+1 katana damage; stronger bell rings", cedar: 3, ash: 2, id: "clapper" }
+      ] : [
+        { name: "Gate Talismans", detail: "+40 bell integrity in the final breach", cedar: 4, ash: 3, id: "talismans" },
+        { name: "Warrior's Knot", detail: "+30 health; defeating yokai restores 5", cedar: 4, ash: 3, id: "knot" }
+      ];
+      setObjective("Convert your materials into one visible repair");
+      say("Back at the bell yard. Pick one repair; the other path stays closed.", 4);
+    }
+
+    function chooseRepairAt(x, y) {
+      if (x > 22 && x < 338 && y > 184 && y < 352) chooseRepair(0);
+      else if (x > 22 && x < 338 && y > 364 && y < 534) chooseRepair(1);
+    }
+
+    function chooseRepair(index) {
+      if (game.scene !== "repair") return;
+      const option = game.upgradeOptions[index];
+      if (!option || game.cedar < option.cedar || game.ash < option.ash) {
+        say("That repair still needs more material.");
+        sfx("hurt");
+        return;
+      }
+      game.cedar -= option.cedar;
+      game.ash -= option.ash;
+      game.upgrades.push(option.name);
+      if (option.id === "rope") game.hero.fogRate = 0.75;
+      if (option.id === "clapper") game.hero.damage += 1;
+      if (option.id === "talismans") bell.maxIntegrity += 40;
+      if (option.id === "knot") {
+        game.hero.maxHp += 30;
+        game.hero.hp = game.hero.maxHp;
+        game.hero.killHeal = 5;
+      }
+      game.score += 350;
+      sfx("upgrade");
+      if (game.run === 1) {
+        prepareTownDeparture(2);
+        say(`${option.name} installed on the ward bell. Its effect is active for the second expedition.`, 4.6);
+      } else {
+        startBreach();
+        say(`${option.name} installed. FINAL BREACH — defend the upgraded bell and charge its ward.`, 5);
+      }
+    }
+
+    function prepareTownDeparture(number) {
+      Object.assign(game, {
+        scene: "topdown", mapId: "town", phase: number === 1 ? "town_gate" : "town_gate2",
+        pendingRun: number, enemies: [], nodes: []
+      });
+      game.hero.x = townGate.x;
+      game.hero.y = townGate.y + 115;
+      cameraX = 382;
+      cameraY = TOWN_Y;
+      setObjective(number === 1 ? "Enter North Gate for the first supply run" : "Re-enter North Gate for the harder second run");
+      say(number === 1
+        ? "Clapper recovered. The north gate is open; press ENTER at the gate when ready."
+        : "Repair installed. Walk back through North Gate when ready for the second run.", 5);
+    }
+
+    function startBreach() {
+      Object.assign(game, {
+        scene: "topdown", mapId: "town", phase: "breach", run: 3, enemies: [], nodes: [],
+        breachTime: 0, spawnClock: 0.7, bossSpawned: false,
+        bossDefeated: false, ringCooldown: 0
+      });
+      bell.integrity = bell.maxIntegrity;
+      bell.resonance = 0;
+      game.hero.x = 540;
+      game.hero.y = 835;
+      cameraX = 382;
+      cameraY = 488;
+      setObjective("Defend the bell • Ring it when the yard is clear");
+      say("FINAL BREACH — yokai can now cross the gate. Protect the bell and build resonance.", 5);
+    }
+
+    function ringBell() {
+      if (game.ringCooldown > 0) return;
+      const closeThreat = game.enemies.some(enemy => !enemy.dead && near(enemy, bell, 90));
+      if (closeThreat) { say("Clear the yokai away from the bell first."); return; }
+      game.ringCooldown = 0.85;
+      const strength = game.upgrades.includes("Tempered Clapper") ? 22 : 15;
+      bell.resonance = Math.min(100, bell.resonance + strength);
+      game.score += 75;
+      burst(bell.x, bell.y - 30, "#f6d56c", 24);
+      screenShake = 4;
+      sfx("bell");
+      if (bell.resonance >= 100) {
+        if (game.bossDefeated) finish("victory");
+        else {
+          setObjective("The ward is charged • Defeat the gate yokai");
+          say("The bell is fully charged. Now break the gate yokai!", 3.5);
+        }
+      }
+    }
+
+    function finish(result, cause = "") {
+      if (game.scene === "outcome") return;
+      game.outcome = result;
+      game.defeatCause = result === "defeat" ? cause : "";
+      game.scene = "outcome";
+      if (result === "victory") {
+        game.score += Math.round(game.hero.hp * 4 + bell.integrity * 3 + bell.resonance * 5);
+        sfx("win");
+      } else sfx("lose");
+    }
+
+    function burst(x, y, color, count) {
+      for (let i = 0; i < count; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 22 + Math.random() * 75;
+        particles.push({
+          x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+          life: 0.35 + Math.random() * 0.45, color, world: game.scene === "topdown"
+        });
+      }
+    }
+
+    function update(dt) {
+      messageTime = Math.max(0, messageTime - dt);
+      objectiveTime = Math.max(0, objectiveTime - dt);
+      screenShake = Math.max(0, screenShake - dt * 20);
+      updateParticles(dt);
+      if (game.scene === "topdown") updateTopdown(dt);
+      else if (game.scene === "platform") updatePlatform(dt);
+      updateMusic(dt);
+    }
+
+    function updateParticles(dt) {
+      for (const particle of particles) {
+        particle.x += particle.vx * dt;
+        particle.y += particle.vy * dt;
+        particle.vy += 70 * dt;
+        particle.life -= dt;
+      }
+      particles = particles.filter(particle => particle.life > 0);
+    }
+
+    function mapBounds() {
+      if (game.mapId === "town") return { left: 18, right: TOWN_W - 18, top: 500, bottom: 1142 };
+      if (game.mapId === "inn" || game.mapId === "smith") return { left: 28, right: 332, top: 175, bottom: 578 };
+      if (game.mapId === "outside") return { left: 18, right: FIELD_W - 18, top: 18, bottom: FIELD_H - 18 };
+      return { left: 32, right: 328, top: 72, bottom: 700 };
+    }
+
+    function mapColliders() {
+      if (game.mapId === "town") return [
+        // Outside the final breach, the complete fenced bell garden is scenery.
+        // During the breach the yard opens, while the bell structure itself stays solid.
+        game.phase === "breach"
+          ? { x: bell.x - 38, y: bell.y - 80, w: 76, h: 100 }
+          : { x: bell.x - 67, y: bell.y - 91, w: 134, h: 161 },
+        // The painted south gate includes a deep tiled roof. It is scenery, not a
+        // continuation of the street, so keep a hard stop in front of its eaves.
+        { x: 438, y: 1006, w: 204, h: 194 },
+        ...(game.phase === "breach" ? [] : [{ x: official.x - 10, y: official.y + 1, w: 20, h: 12 }])
+      ];
+      return [];
+    }
+
+    function insideRect(x, y, r, rect) {
+      return x >= rect.x + r && x <= rect.x + rect.w - r && y >= rect.y + r && y <= rect.y + rect.h - r;
+    }
+
+    function townWalkableAt(x, y, r) {
+      const roads = [
+        { x: 45, y: 700, w: 990, h: 315 },
+        { x: 455, y: 540, w: 155, h: 190 },
+        { x: 900, y: 590, w: 120, h: 140 }
+      ];
+      return roads.some(rect => insideRect(x, y, r, rect));
+    }
+
+    function interiorWalkableAt(x, y, r) {
+      return insideRect(x, y, r, { x: 82, y: 312, w: 196, h: 240 }) ||
+        insideRect(x, y, r, { x: 145, y: 520, w: 70, h: 66 });
+    }
+
+    function fieldWalkableAt(x, y, r) {
+      const openAreas = [
+        { x: 55, y: 135, w: 610, h: 770 },
+        { x: 315, y: 70, w: 90, h: 120 },
+        { x: 565, y: 70, w: 105, h: 155 }
+      ];
+      return openAreas.some(rect => insideRect(x, y, r, rect));
+    }
+
+    function circleHitsRect(x, y, r, rect) {
+      const nx = clamp(x, rect.x, rect.x + rect.w);
+      const ny = clamp(y, rect.y, rect.y + rect.h);
+      return (x - nx) ** 2 + (y - ny) ** 2 < r ** 2;
+    }
+
+    function blockedAt(entity, x, y) {
+      if (game.mapId === "outside" && !fieldWalkableAt(x, y, entity.moveR || entity.r)) return true;
+      if (game.mapId === "town" && !townWalkableAt(x, y, entity.moveR || entity.r)) return true;
+      if ((game.mapId === "inn" || game.mapId === "smith") && !interiorWalkableAt(x, y, entity.moveR || entity.r)) return true;
+      if (mapColliders().some(rect => circleHitsRect(x, y, entity.moveR || entity.r, rect))) return true;
+      if (entity === game.hero && game.mapId === "town") {
+        // The north-gate art is a threshold, not walkable pavement. Keep Yusuke on
+        // the town side until ENTER is pressed, matching the field-side return stop.
+        if (game.phase !== "breach" && circleHitsRect(x, y, entity.moveR || entity.r, { x: 455, y: 570, w: 155, h: 68 })) return true;
+        const actors = game.phase === "breach" ? [] : [official, ...game.residents];
+        for (const actor of actors) {
+          if (Math.hypot(x - actor.x, y - actor.y) < (entity.moveR || entity.r) + 22) return true;
+        }
+        for (const enemy of game.enemies) {
+          if (!enemy.dead && Math.hypot(x - enemy.x, y - enemy.y) < (entity.moveR || entity.r) + enemy.moveR) return true;
+        }
+      }
+      if (entity === game.hero && (game.mapId === "inn" || game.mapId === "smith")) {
+        const keeper = game.mapId === "inn" ? innkeeper : smithkeeper;
+        if (Math.hypot(x - keeper.x, y - keeper.y) < (entity.moveR || entity.r) + 11) return true;
+      }
+      return false;
+    }
+
+    function moveActor(entity, dx, dy) {
+      const bounds = mapBounds();
+      const nextX = clamp(entity.x + dx, bounds.left, bounds.right);
+      if (!blockedAt(entity, nextX, entity.y)) entity.x = nextX;
+      const nextY = clamp(entity.y + dy, bounds.top, bounds.bottom);
+      if (!blockedAt(entity, entity.x, nextY)) entity.y = nextY;
+    }
+
+    function moveEnemyAnimated(enemy, dx, dy) {
+      const beforeX = enemy.x;
+      const beforeY = enemy.y;
+      moveActor(enemy, dx, dy);
+      const movedX = enemy.x - beforeX;
+      const movedY = enemy.y - beforeY;
+      const distance = Math.hypot(movedX, movedY);
+      if (distance > 0.01) {
+        enemy.animDistance = (enemy.animDistance || 0) + distance;
+        if (Math.abs(movedX) > 0.02) enemy.facingX = Math.sign(movedX);
+      }
+    }
+
+    function updateTopdown(dt) {
+      const hero = game.hero;
+      game.elapsed += dt;
+      hero.attackCooldown = Math.max(0, hero.attackCooldown - dt);
+      hero.attackFx = Math.max(0, hero.attackFx - dt);
+      hero.invulnerable = Math.max(0, hero.invulnerable - dt);
+      game.ringCooldown = Math.max(0, game.ringCooldown - dt);
+      game.doorCooldown = Math.max(0, game.doorCooldown - dt);
+
+      let input = movementInput();
+      if (Math.hypot(input.x, input.y) > 0.1) game.tapTarget = null;
+      if (game.tapTarget && Math.hypot(input.x, input.y) <= 0.1) {
+        const tx = game.tapTarget.x - hero.x;
+        const ty = game.tapTarget.y - hero.y;
+        const distance = Math.hypot(tx, ty);
+        if (distance < 7) game.tapTarget = null;
+        else input = { x: tx / distance, y: ty / distance };
+      }
+
+      if (Math.hypot(input.x, input.y) > 0.1) {
+        hero.moving = true;
+        hero.facingX = input.x;
+        hero.facingY = input.y;
+        const beforeX = hero.x;
+        const beforeY = hero.y;
+        moveActor(hero, input.x * hero.speed * dt, input.y * hero.speed * dt);
+        if (game.tapTarget && Math.hypot(hero.x - beforeX, hero.y - beforeY) < 0.02) {
+          game.tapTarget = null;
+          hero.moving = false;
+        }
+      } else hero.moving = false;
+
+      const zoom = (game.mapId === "inn" || game.mapId === "smith") ? 1 : CAMERA_ZOOM;
+      const mapWidth = game.mapId === "town" ? TOWN_W : game.mapId === "outside" ? FIELD_W : W;
+      const mapHeight = game.mapId === "outside" ? FIELD_H : WORLD_H;
+      const visibleWidth = W / zoom;
+      const visibleHeight = H / zoom;
+      cameraX += (clamp(hero.x - visibleWidth / 2, 0, Math.max(0, mapWidth - visibleWidth)) - cameraX) * Math.min(1, dt * 7);
+      const targetCameraY = (game.mapId === "inn" || game.mapId === "smith")
+        ? 0
+        : clamp(hero.y - 360, game.mapId === "town" ? TOWN_Y : 0, mapHeight - visibleHeight);
+      cameraY += (targetCameraY - cameraY) * Math.min(1, dt * 7);
+      if (game.phase === "run1" || game.phase === "run2") updateRun(dt);
+      if (game.phase === "breach") updateBreach(dt);
+      if (game.mapId === "town" && game.phase !== "breach") updateResidents(dt);
+      for (const enemy of game.enemies) updateEnemy(enemy, dt);
+      game.enemies = game.enemies.filter(enemy => !enemy.dead || enemy.flash > -0.24);
+      if (hero.hp <= 0) {
+        const cause = (game.phase === "run1" || game.phase === "run2") && game.fogPhase === "surge" && game.fog >= 100
+          ? "fog"
+          : game.phase === "breach" ? "defender" : "yokai";
+        finish("defeat", cause);
+      } else if (game.phase === "breach" && bell.integrity <= 0) finish("defeat", "bell");
+    }
+
+    function updateResidents(dt) {
+      for (const person of game.residents) {
+        person.pause = Math.max(0, (person.pause || 0) - dt);
+        person.moving = false;
+        if (person.pause > 0) continue;
+        const amount = person.speed * person.dir * dt;
+        const nextX = person.axis === "x" ? person.x + amount : person.x;
+        const nextY = person.axis === "y" ? person.y + amount : person.y;
+        if (Math.hypot(game.hero.x - nextX, game.hero.y - nextY) < 36) {
+          person.pause = 0.22;
+          continue;
+        }
+        person.x = nextX;
+        person.y = nextY;
+        person.moving = true;
+        person.walkClock = (person.walkClock || 0) + Math.abs(amount) / 18;
+        const value = person.axis === "x" ? person.x : person.y;
+        if (value <= person.low || value >= person.high) {
+          if (person.axis === "x") person.x = clamp(person.x, person.low, person.high);
+          else person.y = clamp(person.y, person.low, person.high);
+          person.dir *= -1;
+        }
+      }
+    }
+
+    function updateRun(dt) {
+      const hero = game.hero;
+      if (game.mapId === "outside") {
+        game.outsideVisited = true;
+        game.fogPhaseClock -= dt;
+        if (game.fogPhase === "clear") {
+          game.fog = Math.max(0, game.fog - 4 * dt);
+          if (game.fogPhaseClock <= 0) {
+            game.fogPhase = "warning";
+            game.fogPhaseClock = game.run === 1 ? 4.5 : 3.5;
+            say("THE WIND HAS STOPPED — a fog front is approaching. Finish nearby work or turn south.", 4.2);
+            sfx("hurt");
+          }
+        } else if (game.fogPhase === "warning") {
+          game.fog = Math.max(0, game.fog - dt);
+          if (game.fogPhaseClock <= 0) {
+            game.fogPhase = "surge";
+            game.fogPhaseClock = 9;
+            game.fogFront += 1;
+            game.fogPainClock = 1.2;
+            say("FOG FRONT — visibility is collapsing. Follow the lantern road south if the pressure fills.", 4.5);
+            screenShake = 3;
+            sfx("hurt");
+          }
+        } else {
+          const baseRate = game.run === 1 ? 11 : 13;
+          const frontForce = 1 + Math.min(0.3, Math.max(0, game.fogFront - 1) * 0.1);
+          game.fog = Math.min(100, game.fog + baseRate * frontForce * hero.fogRate * game.runFogMod * dt);
+          if (game.fog >= 85 && game.fogWarning < game.fogFront) {
+            game.fogWarning = game.fogFront;
+            say("WHITEOUT NEAR — abandon the haul and take the south road if you cannot finish now!", 4);
+            screenShake = 4;
+            sfx("hurt");
+          }
+          if (game.fogPhaseClock <= 0) {
+            game.fogPhase = "clear";
+            game.fogPhaseClock = game.run === 1 ? 18 : 12;
+            game.fog = Math.max(0, game.fog - 45);
+            say("The fog front has passed. The field is visible again—for now.", 3.8);
+            sfx("pickup");
+          }
+        }
+        game.spawnClock -= dt;
+        const active = game.enemies.filter(enemy => !enemy.dead).length;
+        const limit = game.run === 1 ? 2 : 3;
+        if (game.spawnClock <= 0 && active < limit) {
+          const type = game.run === 2 && Math.random() > 0.48 ? "prowler" : "wisp";
+          let x = clamp(hero.x + (Math.random() > 0.5 ? 120 : -120), 48, FIELD_W - 48);
+          let y = clamp(hero.y + (Math.random() > 0.5 ? 125 : -125), 145, FIELD_H - 65);
+          if (!fieldWalkableAt(x, y, 12)) {
+            x = clamp(hero.x + (Math.random() - 0.5) * 90, 120, FIELD_W - 120);
+            y = clamp(hero.y - 85, 150, FIELD_H - 80);
+          }
+          spawnEnemy(type, x, y);
+          game.spawnClock = game.run === 1 ? 7 : 4.7;
+        }
+        if (game.fogPhase === "surge" && game.fog >= 100) {
+          game.fogPainClock -= dt;
+          if (game.fogPainClock <= 0) {
+            game.fogPainClock = 0.9;
+            hero.hp -= 7;
+            screenShake = 5;
+            sfx("hurt");
+            say("LOST AIR — this fog front is draining health. Follow the lantern road south!", 3.6);
+          }
+        }
+      }
+
+      const need = runRequirement(game.run);
+      if (near(hero, outsideGate, 86)) {
+        const cedarLeft = Math.max(0, need.cedar - game.cedar);
+        const ashLeft = Math.max(0, need.ash - game.ash);
+        setObjective(canReturn() ? "Press RETURN at North Gate" : `Still need ${cedarLeft} cedar + ${ashLeft} ash`);
+      } else if (game.fogPhase === "clear") {
+        setObjective(`${need.cedar} cedar + ${need.ash} ash • clear field ${Math.ceil(game.fogPhaseClock)}s`);
+      } else if (game.fogPhase === "warning") {
+        setObjective(`Fog front in ${Math.ceil(game.fogPhaseClock)}s • finish nearby work or turn south`);
+      } else {
+        setObjective(`${need.cedar} cedar + ${need.ash} ash • FOG FRONT ${Math.ceil(game.fogPhaseClock)}s`);
+      }
+    }
+
+    function updateBreach(dt) {
+      game.breachTime += dt;
+      game.spawnClock -= dt;
+      const active = game.enemies.filter(enemy => !enemy.dead && !enemy.boss).length;
+      if (game.spawnClock <= 0 && active < 3 && game.breachTime < 44) {
+        spawnEnemy(Math.random() > 0.5 ? "raider" : "wisp", 500 + Math.random() * 75, 685 + Math.random() * 28);
+        game.spawnClock = game.bossSpawned ? 5.4 : 4.2;
+      }
+      if (!game.bossSpawned && game.breachTime > 9) {
+        game.bossSpawned = true;
+        spawnEnemy("boss", townGate.x, 690);
+        say("The gate yokai has arrived. Charge the bell and bring it down!", 4);
+        screenShake = 8;
+      }
+    }
+
+    function updateEnemy(enemy, dt) {
+      enemy.flash -= dt;
+      if (enemy.dead) return;
+      enemy.hitClock -= dt;
+      enemy.stateClock -= dt;
+      const hero = game.hero;
+
+      if (enemy.type === "bandit") {
+        if (enemy.state === "escapeTown" || enemy.state === "escapeField") {
+          const point = enemy.route?.[enemy.routeIndex || 0];
+          if (!point) {
+            enemy.dead = true;
+            if (enemy.state === "escapeTown") {
+              game.phase = "chase_gate";
+              setObjective("The thief escaped • enter North Gate and continue the chase");
+              say("The thief vanished beyond North Gate. Follow him into the field.", 3.5);
+            } else {
+              setObjective("The thief entered the torii trail • press CHASE at the entrance");
+              say("The thief slipped onto the Forest Spirit Path. His guards are waiting inside.", 3.5);
+            }
+            return;
+          }
+          const dx = point[0] - enemy.x;
+          const dy = point[1] - enemy.y;
+          const distance = Math.hypot(dx, dy) || 1;
+          moveEnemyAnimated(enemy, dx / distance * (enemy.state === "escapeTown" ? 86 : 72) * dt, dy / distance * (enemy.state === "escapeTown" ? 86 : 72) * dt);
+          if (distance < 10) enemy.routeIndex += 1;
+          return;
+        }
+        if (near(enemy, hero, 86)) {
+          const dx = enemy.x - hero.x;
+          const dy = enemy.y - hero.y;
+          const distance = Math.hypot(dx, dy) || 1;
+          moveEnemyAnimated(enemy, dx / distance * 36 * dt, dy / distance * 36 * dt);
+        } else {
+          const patrolDirection = Math.sin(game.elapsed * 1.8 + enemy.seed) > 0 ? 1 : -1;
+          moveEnemyAnimated(enemy, patrolDirection * 34 * dt, Math.sin(game.elapsed * 2.3 + enemy.seed) * 13 * dt);
+        }
+        return;
+      }
+
+      const targetsBell = game.phase === "breach" && (enemy.type === "raider" || enemy.type === "boss");
+      const target = targetsBell ? bell : hero;
+      const dx = target.x - enemy.x;
+      const dy = target.y - enemy.y;
+      const distance = Math.hypot(dx, dy) || 1;
+
+      if (enemy.state === "recover") {
+        if (enemy.stateClock <= 0) enemy.state = "chase";
+        return;
+      }
+      if (enemy.state === "telegraph") {
+        if (enemy.stateClock <= 0) {
+          if (!targetsBell && distance < enemy.r + hero.r + 18 && hero.invulnerable <= 0) {
+            hero.hp -= enemy.damage;
+            hero.invulnerable = 0.9;
+            moveActor(hero, -dx / distance * 22, -dy / distance * 22);
+            screenShake = 6; sfx("hurt");
+          } else if (targetsBell && distance < 52) {
+            bell.integrity -= enemy.damage;
+            screenShake = 7; sfx("hurt"); say("The ward bell is taking damage!");
+          }
+          enemy.state = "recover";
+          enemy.stateClock = enemy.boss ? 0.65 : 0.9;
+        }
+        return;
+      }
+
+      if (distance < (targetsBell ? 46 : enemy.r + hero.r + 13)) {
+        enemy.state = "telegraph";
+        enemy.stateClock = enemy.boss ? 0.42 : 0.55;
+        return;
+      }
+
+      if (distance < 210 || targetsBell) {
+        enemy.state = "chase";
+        moveEnemyAnimated(enemy, dx / distance * enemy.speed * dt, dy / distance * enemy.speed * dt);
+      } else {
+        enemy.state = "wander";
+        moveEnemyAnimated(enemy, Math.sin(game.elapsed * 0.8 + enemy.seed) * 13 * dt, Math.cos(game.elapsed * 0.7 + enemy.seed) * 13 * dt);
+      }
+    }
+
+    function updatePlatform(dt) {
+      const p = game.platform;
+      if (!p) return;
+      game.elapsed += dt;
+      const input = movementInput();
+      if (Math.abs(input.x) > 0.05) p.facing = Math.sign(input.x);
+      const targetVx = input.x * 170;
+      const acceleration = p.grounded ? 1050 : 480;
+      p.vx += clamp(targetVx - p.vx, -acceleration * dt, acceleration * dt);
+      if (Math.abs(input.x) <= 0.05) {
+        const drag = p.grounded ? 10 : 0.7;
+        p.vx *= Math.max(0, 1 - drag * dt);
+      }
+      p.x = clamp(p.x + p.vx * dt, 20, SPIRIT_WORLD_W - 10);
+      p.vy += 760 * dt;
+      p.y += p.vy * dt;
+      p.slash = Math.max(0, p.slash - dt);
+      const ground = platformGroundAt(p.x);
+      if (ground !== null && p.y >= ground - 18 && p.vy >= 0) {
+        p.y = ground - 18; p.vy = 0; p.grounded = true;
+      } else p.grounded = false;
+
+      if (p.y > 610) {
+        game.hero.hp -= 8;
+        p.x = p.checkpoint; p.y = (platformGroundAt(p.checkpoint) || 500) - 18; p.vy = 0;
+        sfx("hurt");
+        say("The ravine mist returns Yusuke to the last shrine marker.");
+        if (game.hero.hp <= 0) finish("defeat", "ravine");
+      }
+
+      p.camera += (clamp(p.x - 90, 0, SPIRIT_WORLD_W - W) - p.camera) * Math.min(1, dt * 6);
+      for (const goon of p.goons) {
+        if (goon.dead) continue;
+        goon.cooldown = Math.max(0, goon.cooldown - dt);
+        const goonGround = platformGroundAt(goon.x);
+        if (goonGround !== null) goon.y = goonGround;
+        const xDistance = Math.abs(p.x - goon.x);
+        const sameLevel = Math.abs((p.y + 18) - goon.y) < (p.grounded ? 42 : 64);
+
+        if (p.slash > 0 && xDistance < 60 && sameLevel && !goon.hitThisSlash) {
+          goon.hitThisSlash = true;
+          goon.hp -= 1;
+          goon.x += Math.sign(goon.x - p.x || 1) * 12;
+          burst(goon.x, goon.y - 20, "#fff2d0", 8);
+          sfx("hit");
+          if (goon.hp <= 0) {
+            goon.dead = true;
+            p.checkpoint = Math.max(p.checkpoint, goon.x - 50);
+            game.mon += goon.thief ? 0 : 1;
+            game.score += goon.thief ? 350 : 125;
+            if (goon.thief) {
+              setObjective("Clapper recovered • cross the far torii to return to the field");
+              say("The clapper thief is beaten. Cross the far torii; the field shortcut is open.", 4);
+            } else say("Path guard defeated • Mon +1");
+          } else {
+            say(`Thief staggered • ${goon.hp} hit${goon.hp === 1 ? "" : "s"} left`, 1.6);
+          }
+          continue;
+        }
+        if (p.slash <= 0) goon.hitThisSlash = false;
+
+        if (goon.telegraph > 0) {
+          goon.telegraph -= dt;
+          if (goon.telegraph <= 0) {
+            if (xDistance < 48 && sameLevel && game.hero.invulnerable <= 0) {
+              game.hero.hp -= 9;
+              game.hero.invulnerable = 0.9;
+              p.vy = -135;
+              p.x += Math.sign(p.x - goon.x || 1) * 30;
+              screenShake = 5;
+              sfx("hurt");
+            }
+            goon.cooldown = 1.05;
+          }
+          continue;
+        }
+
+        if (xDistance < 112 && sameLevel) {
+          goon.dir = Math.sign(p.x - goon.x) || goon.dir;
+          goon.x += goon.dir * 46 * dt;
+          if (xDistance < 37 && goon.cooldown <= 0) goon.telegraph = 0.36;
+        } else goon.x += goon.dir * 24 * dt;
+
+        if (goon.x <= goon.left || goon.x >= goon.right) {
+          goon.x = clamp(goon.x, goon.left, goon.right);
+          goon.dir *= -1;
+        }
+      }
+      game.hero.invulnerable = Math.max(0, game.hero.invulnerable - dt);
+      if (game.hero.hp <= 0) {
+        finish("defeat", "path");
+        return;
+      }
+      const thief = p.goons.find(goon => goon.thief);
+      if (p.x > 1278) {
+        if (p.revisit) {
+          if (p.goons.some(goon => !goon.dead)) {
+            p.x = 1278;
+            setObjective("Defeat every path guard before using the far torii");
+          } else finishPlatformReplay();
+        } else if (thief && !thief.dead) {
+          p.x = 1278;
+          setObjective("Defeat the clapper thief before leaving the Spirit Path");
+        } else finishPlatformChase();
+      }
+    }
+
+    function platformGroundAt(x) {
+      for (const segment of SPIRIT_SEGMENTS) {
+        if (x < segment.start || x > segment.end) continue;
+        const progress = (x - segment.start) / Math.max(1, segment.end - segment.start);
+        return segment.y0 + (segment.y1 - segment.y0) * progress;
+      }
+      return null;
+    }
+
+    function draw() {
+      const shakeX = screenShake ? (Math.random() - 0.5) * screenShake : 0;
+      const shakeY = screenShake ? (Math.random() - 0.5) * screenShake : 0;
+      ctx.save();
+      ctx.translate(shakeX, shakeY);
+      if (game.scene === "title") drawTitle();
+      else if (game.scene === "topdown") drawTopdown();
+      else if (game.scene === "repair") drawRepair();
+      else if (game.scene === "platform") drawPlatform();
+      else if (game.scene === "shop") drawShop();
+      else drawOutcome();
+      ctx.restore();
+      if (messageTime > 0 && game.scene !== "title" && game.scene !== "outcome") drawMessage();
+      if (game.scene !== "title" && game.scene !== "outcome") drawMusicToggle();
+    }
+
+    function drawMusicToggle() {
+      ctx.save();
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = "#11131bd9";
+      ctx.strokeStyle = musicMuted ? "#8f7471" : "#c7a45b";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(musicButton.x, musicButton.y, 10, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = musicMuted ? "#9b8581" : "#f0d58c";
+      ctx.beginPath();
+      ctx.moveTo(337, 175); ctx.lineTo(340, 175); ctx.lineTo(344, 171);
+      ctx.lineTo(344, 183); ctx.lineTo(340, 179); ctx.lineTo(337, 179); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = musicMuted ? "#e08a80" : "#f0d58c";
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      if (musicMuted) {
+        ctx.moveTo(347, 174); ctx.lineTo(351, 180); ctx.moveTo(351, 174); ctx.lineTo(347, 180);
+      } else {
+        ctx.arc(344, 177, 4, -0.7, 0.7); ctx.arc(344, 177, 7, -0.6, 0.6);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawTitle() {
+      if (titleBackdrop.complete && titleBackdrop.naturalWidth) {
+        ctx.drawImage(titleBackdrop, 0, 0, titleBackdrop.naturalWidth, titleBackdrop.naturalHeight, 0, 0, W, H);
+      } else {
+        ctx.fillStyle = "#080a10";
+        ctx.fillRect(0, 0, W, H);
+      }
+      const titleShade = ctx.createLinearGradient(0, 0, 0, 220);
+      titleShade.addColorStop(0, "#070b18d9"); titleShade.addColorStop(1, "#070b1800");
+      ctx.fillStyle = titleShade; ctx.fillRect(0, 0, W, 230);
+      const footShade = ctx.createLinearGradient(0, 430, 0, H);
+      footShade.addColorStop(0, "#090b1000"); footShade.addColorStop(1, "#090b10e8");
+      ctx.fillStyle = footShade; ctx.fillRect(0, 420, W, 220);
+      drawHeroCell(0, 0, 180, 458, 110, false);
+      titleStroke("BELL BEFORE", 180, 73, 31, "#f8ebc9", "#16141a");
+      titleStroke("DUSK", 180, 112, 42, "#efbd58", "#16141a");
+      text("JAPAN, 1605", 180, 148, 9, "#d8c9ad", "center", true);
+      text("A SUPERNATURAL SURVIVAL RUN", 180, 166, 9, "#eee0c5", "center", true);
+      if (titleButtonFrame.complete && titleButtonFrame.naturalWidth) {
+        ctx.save();
+        ctx.shadowColor = "#050308d9";
+        ctx.shadowBlur = 8;
+        ctx.shadowOffsetY = 4;
+        ctx.drawImage(titleButtonFrame, 30, 488, 300, 67);
+        ctx.restore();
+      } else {
+        panel(30, 488, 300, 67, "#0b0b0ee8", "#d8a858");
+      }
+      titleStroke("TAP TO BEGIN", 180, 514, 18, "#fff2d0", "#12090a");
+      text("CHASE  •  GATHER  •  REPAIR  •  DEFEND", 180, 539, 8, "#e0c895", "center", true);
+      text("PLAYABLE PROTOTYPE", 180, 610, 8, "#8f897e", "center", true);
+    }
+
+    function titleStroke(value, x, y, size, fill, stroke) {
+      ctx.font = `bold ${size}px Georgia`;
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.lineWidth = 5; ctx.strokeStyle = stroke; ctx.strokeText(value, x, y);
+      ctx.fillStyle = fill; ctx.fillText(value, x, y);
+    }
+
+    function drawUiButtonFrame(x, y, width, height) {
+      if (uiSkin.complete && uiSkin.naturalWidth) {
+        ctx.drawImage(uiSkin, 24, 1400, uiSkin.naturalWidth - 48, uiSkin.naturalHeight - 1400, x, y, width, height);
+      } else panel(x, y, width, height, "#13121ae8", "#d8a858");
+    }
+
+    function drawUiMenuSkin() {
+      if (uiSkin.complete && uiSkin.naturalWidth) ctx.drawImage(uiSkin, 0, 0, uiSkin.naturalWidth, uiSkin.naturalHeight, 0, 0, W, H);
+      else { ctx.fillStyle = "#111722"; ctx.fillRect(0, 0, W, H); }
+    }
+
+    function drawTownSilhouette() {
+      ctx.fillStyle = "#25202a";
+      ctx.fillRect(0, 370, W, 170);
+      for (let x = -20; x < W; x += 74) {
+        ctx.fillStyle = x % 148 ? "#392b30" : "#2c2931";
+        ctx.fillRect(x, 315 + (x % 3) * 12, 66, 125);
+        ctx.fillStyle = "#171722";
+        ctx.beginPath();
+        ctx.moveTo(x - 10, 322 + (x % 3) * 12);
+        ctx.lineTo(x + 33, 292 + (x % 3) * 12);
+        ctx.lineTo(x + 76, 322 + (x % 3) * 12);
+        ctx.fill();
+      }
+    }
+
+    function drawTopdown() {
+      ctx.fillStyle = "#94896b";
+      ctx.fillRect(0, 0, W, H);
+      ctx.save();
+      const zoom = (game.mapId === "inn" || game.mapId === "smith") ? 1 : CAMERA_ZOOM;
+      ctx.scale(zoom, zoom);
+      ctx.translate(-cameraX, -cameraY);
+      drawWorld();
+      for (const node of game.nodes) if (node.active) drawNode(node);
+      if (game.mapId === "town" && game.phase !== "breach") {
+        drawOfficial();
+        drawTownResidents();
+      }
+      for (const enemy of game.enemies) drawEnemy(enemy);
+      drawHero(game.hero);
+      drawWorldParticles();
+      ctx.restore();
+      if (["chase_field", "post_chase_field"].includes(game.phase) && game.mapId === "outside") {
+        drawMistBands(0.08);
+      } else if (["run1", "run2"].includes(game.phase) && game.mapId === "outside") {
+        const fogAlpha = game.fogPhase === "surge"
+          ? 0.12 + game.fog / 180
+          : game.fogPhase === "warning"
+            ? 0.07 + game.fog / 420
+            : 0.018 + game.fog / 800;
+        drawMistBands(fogAlpha);
+      }
+      if (game.phase === "breach") drawMistBands(0.2 + Math.min(0.14, game.breachTime / 220));
+      drawHud();
+      drawControls();
+    }
+
+    function drawWorld() {
+      if (game.mapId === "town") { drawTownMap(); return; }
+      if (game.mapId === "inn") { drawInnMap(); return; }
+      if (game.mapId === "smith") { drawSmithMap(); return; }
+      drawOutsideMap();
+    }
+
+    function drawOutsideMap() {
+      if (outsideBackdrop.complete && outsideBackdrop.naturalWidth) {
+        ctx.drawImage(outsideBackdrop, 0, 0, outsideBackdrop.naturalWidth, outsideBackdrop.naturalHeight, 0, 0, FIELD_W, FIELD_H);
+        if (game.phase === "chase_field") {
+          const pulse = 17 + Math.sin(game.elapsed * 5) * 3;
+          ctx.strokeStyle = "#f0ce68"; ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.arc(spiritTrail.x, spiritTrail.y, pulse, 0, Math.PI * 2); ctx.stroke();
+          ctx.fillStyle = "#f0ce68";
+          ctx.beginPath(); ctx.moveTo(spiritTrail.x, spiritTrail.y + 22); ctx.lineTo(spiritTrail.x - 8, spiritTrail.y + 10); ctx.lineTo(spiritTrail.x + 8, spiritTrail.y + 10); ctx.fill();
+        }
+        drawDoorPlaque(sealedGate.x, sealedGate.y + 38, "SEALED • DEMO");
+        drawDoorPlaque(outsideGate.x, outsideGate.y + 30, "POST TOWN");
+        return;
+      }
+      ctx.fillStyle = "#1d302c"; ctx.fillRect(0, 0, FIELD_W, FIELD_H);
+      ctx.fillStyle = "#756a4e"; ctx.fillRect(285, 0, 150, FIELD_H);
+    }
+
+    function drawTownMap() {
+      if (townPanorama.complete && townPanorama.naturalWidth) {
+        ctx.drawImage(townPanorama, 0, 0, townPanorama.naturalWidth, townPanorama.naturalHeight, 0, TOWN_Y, TOWN_W, 720);
+        drawDoorPlaque(innDoor.x, innDoor.y - 23, "INN");
+        drawDoorPlaque(smithDoor.x - 3, smithDoor.y - 23, "FORGE");
+        if (["chase_gate", "town_gate", "town_gate2"].includes(game.phase)) drawDoorPlaque(townGate.x, townGate.y + 12, "NORTH GATE");
+        drawInstalledBellRepairs();
+        drawBellOverlay();
+        drawSouthBoundary();
+        return;
+      }
+      ctx.fillStyle = "#c5a66f";
+      ctx.fillRect(0, 700, TOWN_W, 500);
+      const sections = [
+        { x: 0, name: "WEST STREET", wall: "#8d6048", cloth: "#3f6071" },
+        { x: 360, name: "BELL SQUARE", wall: "#9b704e", cloth: "#6d3c42" },
+        { x: 720, name: "EAST STREET", wall: "#7d624d", cloth: "#435f54" }
+      ];
+      for (const section of sections) {
+        ctx.fillStyle = section.x === 360 ? "#c8ad79" : "#bfa16d";
+        ctx.fillRect(section.x, 805, 360, 295);
+        for (let y = 820; y < 1100; y += 36) {
+          ctx.fillStyle = y % 72 ? "#b69865" : "#c4a875";
+          ctx.fillRect(section.x, y, 360, 2);
+        }
+        drawTownFacade(section.x, section.wall, section.cloth);
+        text(section.name, section.x + 180, 1118, 10, "#49372c", "center", true);
+      }
+      drawNorthGate();
+      drawBellYard();
+      drawForegroundRoofWide();
+      drawBellOverlay();
+    }
+
+    function drawDoorPlaque(x, y, label) {
+      const width = Math.max(34, label.length * 6 + 10);
+      ctx.fillStyle = "#171722d9"; ctx.fillRect(x - width / 2, y - 9, width, 18);
+      ctx.strokeStyle = "#c7a65d"; ctx.lineWidth = 1; ctx.strokeRect(x - width / 2, y - 9, width, 18);
+      text(label, x, y, 8, "#f3dfb0", "center", true);
+    }
+
+    function drawSouthBoundary() {
+      ctx.fillStyle = "#55382e";
+      ctx.fillRect(487, 1132, 8, 35); ctx.fillRect(585, 1132, 8, 35);
+      ctx.fillStyle = "#b4483f"; ctx.fillRect(491, 1144, 98, 7);
+      ctx.strokeStyle = "#dbc276"; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(495, 1148); ctx.quadraticCurveTo(540, 1160, 585, 1148); ctx.stroke();
+      drawDoorPlaque(540, 1122, "SOUTH ROAD CLOSED");
+    }
+
+    function drawTownFacade(sectionX, wall, cloth) {
+      ctx.fillStyle = "#29282c";
+      ctx.fillRect(sectionX, 742, 360, 20);
+      ctx.fillStyle = "#4a3934";
+      for (let x = sectionX - 6; x < sectionX + 360; x += 24) ctx.fillRect(x, 736, 19, 11);
+      ctx.fillStyle = wall;
+      ctx.fillRect(sectionX, 762, 360, 123);
+      ctx.fillStyle = "#ead8b4";
+      for (let x = sectionX + 22; x < sectionX + 340; x += 88) {
+        ctx.fillRect(x, 780, 54, 39);
+        ctx.strokeStyle = "#5a4439"; ctx.lineWidth = 3; ctx.strokeRect(x, 780, 54, 39);
+      }
+      ctx.fillStyle = cloth;
+      for (let x = sectionX + 8; x < sectionX + 352; x += 58) ctx.fillRect(x, 842, 48, 24);
+      ctx.fillStyle = "#48352f";
+      ctx.fillRect(sectionX + 160, 812, 48, 73);
+    }
+
+    function drawNorthGate() {
+      ctx.fillStyle = "#25242a";
+      ctx.fillRect(476, 726, 128, 22);
+      ctx.fillStyle = "#5b3d31";
+      ctx.fillRect(482, 748, 24, 68);
+      ctx.fillRect(574, 748, 24, 68);
+      ctx.fillStyle = "#342c2b";
+      ctx.fillRect(506, 748, 68, 52);
+      ctx.fillStyle = "#d7b267";
+      ctx.fillRect(523, 758, 34, 17);
+      text("NORTH", 540, 771, 9, "#3a2a26", "center", true);
+    }
+
+    function drawForegroundRoofWide() {
+      ctx.fillStyle = "#27262c";
+      ctx.fillRect(0, 1134, TOWN_W, 66);
+      ctx.fillStyle = "#4f5558";
+      for (let x = -12; x < TOWN_W; x += 28) {
+        ctx.beginPath(); ctx.arc(x + 14, 1137, 17, Math.PI, 0); ctx.fill();
+      }
+      ctx.fillStyle = "#17181d";
+      ctx.fillRect(0, 1144, TOWN_W, 8);
+    }
+
+    function drawInnMap() {
+      ctx.fillStyle = "#17141a";
+      ctx.fillRect(0, 0, W, H);
+      if (innInterior.complete && innInterior.naturalWidth) {
+        ctx.drawImage(innInterior, 0, 0, innInterior.naturalWidth, innInterior.naturalHeight, 0, 96, W, 540);
+      } else {
+        ctx.fillStyle = "#9d7a4f";
+        ctx.fillRect(24, 96, 312, 540);
+      }
+      if (citizenVerticalAtlas) {
+        drawCitizenVerticalCell(4, 0, innkeeper.x, innkeeper.y + 7, 82);
+        redrawInteriorCounter(innInterior, 116, 345, 792, 120);
+      }
+      drawDoorPlaque(180, 579, "SOUTH EXIT");
+    }
+
+    function drawSmithMap() {
+      ctx.fillStyle = "#111318";
+      ctx.fillRect(0, 0, W, H);
+      if (forgeInterior.complete && forgeInterior.naturalWidth) {
+        ctx.drawImage(forgeInterior, 0, 0, forgeInterior.naturalWidth, forgeInterior.naturalHeight, 0, 96, W, 540);
+      } else {
+        ctx.fillStyle = "#76583f";
+        ctx.fillRect(24, 96, 312, 540);
+      }
+      if (citizenVerticalAtlas) {
+        drawCitizenVerticalCell(5, 0, smithkeeper.x, smithkeeper.y + 6, 86);
+        redrawInteriorCounter(forgeInterior, 116, 475, 792, 120);
+      }
+      drawDoorPlaque(180, 579, "SOUTH EXIT");
+    }
+
+    function redrawInteriorCounter(image, sx, sy, sw, sh) {
+      if (!image.complete || !image.naturalWidth) return;
+      const scaleX = W / image.naturalWidth;
+      const scaleY = 540 / image.naturalHeight;
+      ctx.drawImage(image, sx, sy, sw, sh, sx * scaleX, 96 + sy * scaleY, sw * scaleX, sh * scaleY);
+    }
+
+    function drawTownGate(y) {
+      ctx.fillStyle = "#31262a";
+      ctx.fillRect(0, y, W, 17);
+      ctx.fillStyle = "#9b403a";
+      ctx.fillRect(52, y - 16, 256, 12);
+      ctx.fillRect(70, y - 45, 12, 66);
+      ctx.fillRect(278, y - 45, 12, 66);
+      ctx.fillStyle = "#d0b472";
+      ctx.fillRect(162, y - 4, 36, 6);
+      text("TOWN GATE", 180, y + 34, 10, "#473932", "center", true);
+    }
+
+    function drawTree(x, y) {
+      ctx.fillStyle = "#4c3c32";
+      ctx.fillRect(x - 4, y + 17, 8, 24);
+      ctx.fillStyle = "#415b46";
+      ctx.fillRect(x - 16, y, 32, 27);
+      ctx.fillStyle = "#5f7955";
+      ctx.fillRect(x - 11, y - 9, 22, 18);
+    }
+
+    function drawHouse(x, y, width, color) {
+      ctx.fillStyle = "#33282a";
+      ctx.fillRect(x - 6, y, width + 12, 13);
+      ctx.fillStyle = "#564138";
+      for (let i = 0; i < width + 8; i += 15) ctx.fillRect(x - 4 + i, y - 6, 12, 7);
+      ctx.fillStyle = color;
+      ctx.fillRect(x, y + 13, width, 82);
+      ctx.fillStyle = "#e2d2ad";
+      ctx.fillRect(x + 8, y + 27, 24, 29);
+      ctx.fillRect(x + width - 32, y + 27, 24, 29);
+      ctx.fillStyle = "#4a3430";
+      ctx.fillRect(x + width / 2 - 13, y + 42, 26, 53);
+    }
+
+    function drawBellYard() {
+      ctx.fillStyle = "#c4b589";
+      ctx.fillRect(bell.x - 56, bell.y - 126, 112, 134);
+      ctx.strokeStyle = "#7f725b";
+      ctx.lineWidth = 3;
+      ctx.strokeRect(bell.x - 52, bell.y - 122, 104, 126);
+      drawBellGraphic(bell.x, bell.y, 0.72);
+      drawInstalledBellRepairs();
+      if (game.phase === "breach") {
+        ctx.fillStyle = bell.integrity / bell.maxIntegrity > 0.5 ? "#efcb61" : "#ef6558";
+        ctx.fillRect(bell.x - 37, bell.y + 46, 74 * clamp(bell.integrity / bell.maxIntegrity, 0, 1), 5);
+      }
+    }
+
+    function drawInstalledBellRepairs() {
+      const hasRope = game.upgrades.includes("Braided Ward Rope");
+      const hasClapper = game.upgrades.includes("Tempered Clapper");
+      const hasTalismans = game.upgrades.includes("Gate Talismans");
+      const hasKnot = game.upgrades.includes("Warrior's Knot");
+
+      if (hasRope) {
+        ctx.strokeStyle = "#eee1b3";
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(bell.x - 47, bell.y - 78);
+        ctx.quadraticCurveTo(bell.x, bell.y - 65, bell.x + 47, bell.y - 78);
+        ctx.stroke();
+        for (const offset of [-30, -10, 10, 30]) {
+          ctx.fillStyle = "#f3ead0";
+          ctx.beginPath();
+          ctx.moveTo(bell.x + offset - 4, bell.y - 73);
+          ctx.lineTo(bell.x + offset, bell.y - 62);
+          ctx.lineTo(bell.x + offset + 4, bell.y - 73);
+          ctx.fill();
+        }
+      }
+
+      if (hasClapper) {
+        ctx.fillStyle = "#f2ca61";
+        ctx.fillRect(bell.x - 3, bell.y - 31, 6, 34);
+        ctx.beginPath();
+        ctx.arc(bell.x, bell.y + 5, 7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "#fff1a1";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+
+      if (hasTalismans) {
+        for (const [x, y, tilt] of [[-43, -103, -0.1], [39, -103, 0.1], [-45, -20, 0.08], [41, -20, -0.08]]) {
+          ctx.save();
+          ctx.translate(bell.x + x, bell.y + y);
+          ctx.rotate(tilt);
+          ctx.fillStyle = "#f4e7bd";
+          ctx.fillRect(-5, -11, 10, 22);
+          ctx.fillStyle = "#b34d42";
+          ctx.fillRect(-2, -8, 4, 3);
+          ctx.fillRect(-1, -2, 2, 9);
+          ctx.restore();
+        }
+      }
+
+      if (hasKnot) {
+        ctx.strokeStyle = "#b8403c";
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(bell.x - 9, bell.y + 25, 8, 0, Math.PI * 2);
+        ctx.arc(bell.x + 9, bell.y + 25, 8, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = "#d0584d";
+        ctx.beginPath();
+        ctx.moveTo(bell.x, bell.y + 28);
+        ctx.lineTo(bell.x - 10, bell.y + 46);
+        ctx.lineTo(bell.x, bell.y + 41);
+        ctx.lineTo(bell.x + 10, bell.y + 46);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      if (game.upgrades.length) {
+        ctx.fillStyle = "#1a1718d9";
+        ctx.fillRect(bell.x - 39, bell.y + 12, 78, 15);
+        ctx.strokeStyle = "#d3ae62";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(bell.x - 38.5, bell.y + 12.5, 77, 14);
+        text(`WARD ${game.upgrades.length}/2`, bell.x, bell.y + 20, 7, "#ffe4a0", "center", true);
+      }
+    }
+
+    function drawBellOverlay() {
+      if (game.phase !== "breach") return;
+      const pulse = 24 + Math.sin(game.elapsed * 5) * 4 + bell.resonance * 0.08;
+      ctx.save();
+      ctx.globalAlpha = 0.18 + bell.resonance / 650;
+      ctx.strokeStyle = "#f8d66d";
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(bell.x, bell.y - 20, pulse, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = bell.integrity / bell.maxIntegrity > 0.5 ? "#efcb61" : "#ef6558";
+      ctx.fillRect(bell.x - 37, bell.y + 46, 74 * clamp(bell.integrity / bell.maxIntegrity, 0, 1), 5);
+    }
+
+    function drawBellGraphic(x, y, scale) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(scale, scale);
+      ctx.fillStyle = "#4b3328";
+      ctx.fillRect(-42, -54, 9, 92);
+      ctx.fillRect(33, -54, 9, 92);
+      ctx.fillRect(-48, -58, 96, 9);
+      ctx.fillStyle = "#c59132";
+      ctx.beginPath();
+      ctx.arc(0, -10, 29, Math.PI, 0);
+      ctx.lineTo(35, 26); ctx.lineTo(-35, 26); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#e3ba4f";
+      ctx.fillRect(-39, 20, 78, 8);
+      ctx.fillStyle = "#5b402a";
+      ctx.fillRect(-4, 26, 8, 18);
+      ctx.restore();
+    }
+
+    function drawLadder() {
+      ctx.fillStyle = "#72513b";
+      ctx.fillRect(ladder.x - 14, ladder.y - 34, 4, 68);
+      ctx.fillRect(ladder.x + 10, ladder.y - 34, 4, 68);
+      for (let y = ladder.y - 28; y < ladder.y + 32; y += 11) ctx.fillRect(ladder.x - 12, y, 24, 3);
+    }
+
+    function drawLadderMarker() {
+      const bob = Math.sin(game.elapsed * 5) * 5;
+      ctx.fillStyle = "#f4cf61";
+      ctx.beginPath();
+      ctx.moveTo(ladder.x, ladder.y - 56 + bob);
+      ctx.lineTo(ladder.x - 9, ladder.y - 70 + bob);
+      ctx.lineTo(ladder.x + 9, ladder.y - 70 + bob);
+      ctx.fill();
+    }
+
+    function drawForegroundRoof() {
+      ctx.fillStyle = "#30282b";
+      ctx.fillRect(0, 1120, W, 80);
+      ctx.fillStyle = "#53615d";
+      for (let x = -8; x < W; x += 24) {
+        ctx.beginPath(); ctx.arc(x + 12, 1123, 15, Math.PI, 0); ctx.fill();
+      }
+      ctx.fillStyle = "#242126";
+      ctx.fillRect(0, 1130, W, 7);
+    }
+
+    function drawOfficial() {
+      if (citizenWalkAtlas || citizenVerticalAtlas || citizenPortraitAtlas) {
+        const baseline = official.y + 16;
+        drawGroundShadow(official.x, baseline, 15);
+        const dx = game.hero.x - official.x;
+        const dy = game.hero.y - official.y;
+        const sideApproach = Math.abs(dx) > 72 && Math.abs(dx) > Math.abs(dy) * 1.25;
+        if (!sideApproach && citizenVerticalAtlas) {
+          drawCitizenVerticalCell(0, dy >= 0 ? 0 : 2, official.x, baseline, 62);
+        } else if (!sideApproach && citizenPortraitAtlas && dy >= 0) {
+          drawCitizenPortraitCell(0, 0, official.x, baseline, 62);
+        } else {
+          drawCitizenWalkCell(0, 0, official.x, baseline, 62, dx < 0);
+        }
+        return;
+      }
+      ctx.fillStyle = "#3b384b";
+      ctx.fillRect(official.x - 10, official.y - 13, 20, 27);
+      ctx.fillStyle = "#e4b887";
+      ctx.fillRect(official.x - 7, official.y - 22, 14, 10);
+      ctx.fillStyle = "#27252b";
+      ctx.fillRect(official.x - 9, official.y - 26, 18, 5);
+      ctx.fillStyle = "#f2d06d";
+      ctx.fillRect(official.x - 2, official.y - 8, 4, 13);
+    }
+
+    function drawTownResidents() {
+      if (!citizenWalkAtlas) return;
+      for (const person of game.residents) {
+        const baseline = person.y + 16;
+        const frame = person.moving ? Math.floor((person.walkClock || 0) * 2) % 2 : 0;
+        drawGroundShadow(person.x, baseline, 14);
+        if (person.axis === "y" && citizenVerticalAtlas) {
+          const directionRow = person.dir > 0 ? frame : 2 + frame;
+          drawCitizenVerticalCell(person.column, directionRow, person.x, baseline, 58);
+        } else {
+          drawCitizenWalkCell(person.column, frame, person.x, baseline, 58, person.dir < 0);
+        }
+      }
+    }
+
+    function drawNode(node) {
+      const bob = Math.sin(game.elapsed * 3 + node.pulse) * 2;
+      ctx.save();
+      ctx.translate(node.x, node.y + bob);
+      ctx.strokeStyle = "#3f3027"; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.moveTo(-10, 6); ctx.lineTo(8, -8); ctx.moveTo(-7, 10); ctx.lineTo(12, -4); ctx.stroke();
+      ctx.strokeStyle = "#8f6540"; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(-10, 6); ctx.lineTo(8, -8); ctx.moveTo(-7, 10); ctx.lineTo(12, -4); ctx.stroke();
+      ctx.strokeStyle = "#d6bd62"; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(-4, -1); ctx.lineTo(5, 7); ctx.stroke();
+      ctx.fillStyle = "#718353";
+      ctx.fillRect(5, -13, 4, 10); ctx.fillRect(9, -11, 7, 3); ctx.fillRect(2, -9, 7, 3);
+      ctx.globalAlpha = 0.45 + Math.sin(game.elapsed * 4 + node.pulse) * 0.15;
+      ctx.strokeStyle = "#f0d876"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(0, 0, 16, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawHero(hero) {
+      if (hero.invulnerable > 0 && Math.floor(hero.invulnerable * 16) % 2) return;
+      drawHeroUpgradeEffects(hero);
+      if (heroSheet.complete && heroSheet.naturalWidth) {
+        let column;
+        if (Math.abs(hero.facingX) > Math.abs(hero.facingY)) column = hero.facingX < 0 ? 1 : 2;
+        else column = hero.facingY > 0 ? 0 : 3;
+        let row = hero.moving && Math.floor(game.elapsed * 7) % 2 ? 1 : 0;
+        let flip = false;
+        let attackLunge = 0;
+        if (hero.attackFx > 0) {
+          if (Math.abs(hero.facingY) >= Math.abs(hero.facingX)) {
+            row = 0;
+            column = hero.facingY < 0 ? 3 : 0;
+            const slashProgress = 1 - clamp(hero.attackFx / 0.24, 0, 1);
+            attackLunge = Math.sin(slashProgress * Math.PI) * (hero.facingY < 0 ? -4 : 4);
+          } else {
+            row = 2;
+            if (hero.facingX < -0.25) { column = 1; flip = true; }
+            else if (hero.facingX > 0.25) column = 1;
+            else column = 0;
+          }
+        }
+        drawHeroCell(column, row, hero.x, hero.y + 15 + attackLunge, 68, flip);
+        if (hero.attackFx > 0 && Math.abs(hero.facingY) >= Math.abs(hero.facingX)) drawVerticalSlashFx(hero);
+        return;
+      }
+      ctx.fillStyle = "#18191f";
+      ctx.fillRect(hero.x - 7, hero.y - 17, 14, 10);
+      ctx.fillStyle = "#e6b17e";
+      ctx.fillRect(hero.x - 6, hero.y - 20, 12, 8);
+      ctx.fillStyle = "#e8dfc4";
+      ctx.fillRect(hero.x - 9, hero.y - 17, 18, 3);
+      ctx.fillStyle = "#bd7b24";
+      ctx.fillRect(hero.x - 10, hero.y - 8, 20, 13);
+      ctx.fillStyle = "#185b63";
+      ctx.fillRect(hero.x - 9, hero.y + 5, 8, 10);
+      ctx.fillRect(hero.x + 1, hero.y + 5, 8, 10);
+      ctx.fillStyle = "#e0b246";
+      ctx.fillRect(hero.x - 3, hero.y, 6, 6);
+      if (!game.hasKatana) return;
+      ctx.save();
+      ctx.translate(hero.x, hero.y - 1);
+      ctx.rotate(Math.atan2(hero.facingY, hero.facingX));
+      ctx.fillStyle = "#d2a344";
+      ctx.fillRect(7, -2, 8, 4);
+      ctx.fillStyle = hero.attackFx > 0 ? "#fff8df" : "#cad3d1";
+      ctx.fillRect(14, -1, hero.attackFx > 0 ? 34 : 21, 2);
+      ctx.restore();
+    }
+
+    function drawHeroUpgradeEffects(hero) {
+      const foxSmokeActive = game.smokeCharm || ((game.phase === "run1" || game.phase === "run2") && game.runFogMod < 1);
+      if (foxSmokeActive) {
+        ctx.save();
+        ctx.globalAlpha = 0.34;
+        ctx.strokeStyle = "#8de4dd";
+        ctx.lineWidth = 3;
+        for (let i = 0; i < 3; i++) {
+          const angle = game.elapsed * (0.9 + i * 0.12) + i * 2.1;
+          const x = hero.x + Math.cos(angle) * (18 + i * 3);
+          const y = hero.y - 5 + Math.sin(angle * 1.3) * 15;
+          ctx.beginPath();
+          ctx.arc(x, y, 4 + i, 0.3, 5.2);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+      if (hero.damage > 1) {
+        ctx.save();
+        ctx.globalAlpha = 0.55 + Math.sin(game.elapsed * 5) * 0.15;
+        ctx.fillStyle = "#d8f3ea";
+        ctx.beginPath();
+        ctx.arc(hero.x + 19, hero.y - 10, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    function drawVerticalSlashFx(hero) {
+      const north = hero.facingY < 0;
+      const progress = 1 - clamp(hero.attackFx / 0.24, 0, 1);
+      const centerY = hero.y + (north ? -8 : 5);
+      const base = north ? -Math.PI / 2 : Math.PI / 2;
+      const sweep = -1.2 + progress * 2.35;
+      ctx.save();
+      ctx.translate(hero.x, centerY);
+      ctx.globalAlpha = 0.9 - progress * 0.22;
+      ctx.strokeStyle = "#fff7d9";
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.arc(0, 0, 31, base + sweep - 0.58, base + sweep + 0.58);
+      ctx.stroke();
+      ctx.strokeStyle = "#d8aa4e";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, 35, base + sweep - 0.42, base + sweep + 0.5);
+      ctx.stroke();
+      ctx.rotate(base + sweep);
+      ctx.strokeStyle = "#201a1b"; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.moveTo(7, 0); ctx.lineTo(16, 0); ctx.stroke();
+      ctx.strokeStyle = "#e0b650"; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(14, -5); ctx.lineTo(14, 5); ctx.stroke();
+      ctx.strokeStyle = "#fff9e7"; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(17, 0); ctx.lineTo(43, 0); ctx.stroke();
+      ctx.strokeStyle = "#a8c4c8"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(18, -1); ctx.lineTo(43, -1); ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawHeroCell(column, row, x, baseline, size, flip = false) {
+      if (!heroSheet.complete || !heroSheet.naturalWidth) return;
+      const sourceWidth = heroSheet.naturalWidth / 4;
+      const sourceHeight = heroSheet.naturalHeight / 4;
+      const footRatios = [
+        [0.923, 0.958, 0.958, 0.939],
+        [0.900, 0.871, 0.875, 0.891],
+        [0.794, 0.781, 0.790, 0.788],
+        [0.807, 0.801, 0.801, 0.801]
+      ];
+      const drawY = baseline - size * footRatios[row][column];
+      // The generated front/back cells sit at different horizontal positions
+      // inside their source boxes. Cancel that baked offset so changing only
+      // vertical direction never appears to move Yusuke sideways.
+      const verticalOpticalOffset = row < 2
+        ? (column === 0 ? 30 : column === 3 ? -39 : 0)
+        : 0;
+      const drawX = -size / 2 - verticalOpticalOffset * size / sourceWidth;
+      ctx.save();
+      ctx.translate(x, 0);
+      if (flip) ctx.scale(-1, 1);
+      ctx.drawImage(
+        heroSheet,
+        column * sourceWidth, row * sourceHeight, sourceWidth, sourceHeight,
+        drawX, drawY, size, size
+      );
+      ctx.restore();
+    }
+
+    function drawGroundShadow(x, baseline, radius, alpha = 0.34) {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = "#080b10";
+      ctx.beginPath();
+      ctx.ellipse(x, baseline + 1, radius, Math.max(3, radius * 0.24), 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function drawCitizenWalkCell(column, row, x, baseline, size, flip = false) {
+      if (!citizenWalkAtlas) return false;
+      const sourceWidth = Math.floor(citizenWalkAtlas.width / 6);
+      const sourceHeight = Math.floor(citizenWalkAtlas.height / 2);
+      const footRatios = [
+        [0.85, 0.87, 0.86, 0.87, 0.86, 0.87],
+        [0.91, 0.90, 0.90, 0.92, 0.91, 0.91]
+      ];
+      ctx.save();
+      ctx.translate(x, 0);
+      if (flip) ctx.scale(-1, 1);
+      ctx.drawImage(
+        citizenWalkAtlas,
+        column * sourceWidth + 2, row * sourceHeight + 2, sourceWidth - 4, sourceHeight - 4,
+        -size / 2, baseline - size * footRatios[row][column], size, size
+      );
+      ctx.restore();
+      return true;
+    }
+
+    function drawCitizenPortraitCell(column, row, x, baseline, size) {
+      if (!citizenPortraitAtlas) return false;
+      const sourceWidth = citizenPortraitAtlas.width / 3;
+      const sourceHeight = citizenPortraitAtlas.height / 2;
+      const footRatios = [
+        [0.84, 0.86, 0.86],
+        [0.88, 0.91, 0.91]
+      ];
+      ctx.drawImage(
+        citizenPortraitAtlas,
+        column * sourceWidth + 2, row * sourceHeight + 2, sourceWidth - 4, sourceHeight - 4,
+        x - size / 2, baseline - size * footRatios[row][column], size, size
+      );
+      return true;
+    }
+
+    function drawCitizenVerticalCell(column, row, x, baseline, size) {
+      if (!citizenVerticalAtlas) return false;
+      const sourceWidth = Math.floor(citizenVerticalAtlas.width / 6);
+      const sourceHeight = Math.floor(citizenVerticalAtlas.height / 4);
+      const footRatios = [0.95, 0.95, 0.95, 0.94];
+      ctx.drawImage(
+        citizenVerticalAtlas,
+        column * sourceWidth + 2, row * sourceHeight + 2, sourceWidth - 4, sourceHeight - 4,
+        x - size / 2, baseline - size * footRatios[row], size, size
+      );
+      return true;
+    }
+
+    function drawBanditWalkCell(column, row, x, baseline, size, flip = false) {
+      if (!banditWalkAtlas) return false;
+      const sourceWidth = banditWalkAtlas.width / 6;
+      const sourceHeight = banditWalkAtlas.height / 2;
+      const footRatio = row === 0 ? 0.89 : 0.78;
+      ctx.save();
+      ctx.translate(x, 0);
+      if (flip) ctx.scale(-1, 1);
+      ctx.drawImage(
+        banditWalkAtlas,
+        column * sourceWidth + 3, row * sourceHeight + 3, sourceWidth - 6, sourceHeight - 6,
+        -size / 2, baseline - size * footRatio, size, size
+      );
+      ctx.restore();
+      return true;
+    }
+
+    function drawPathEnemyCell(column, row, x, baseline, size, flip = false) {
+      if (!pathEnemyAtlas) return false;
+      const sourceWidth = pathEnemyAtlas.width / 3;
+      const sourceHeight = pathEnemyAtlas.height / 3;
+      const footRatios = [0.957, 0.830, 0.663];
+      ctx.save();
+      ctx.translate(x, 0);
+      if (flip) ctx.scale(-1, 1);
+      ctx.drawImage(
+        pathEnemyAtlas,
+        column * sourceWidth, row * sourceHeight, sourceWidth, sourceHeight,
+        -size / 2, baseline - size * footRatios[row], size, size
+      );
+      ctx.restore();
+      return true;
+    }
+
+    function drawYokaiCell(column, row, x, baseline, size, flip = false, flash = false) {
+      if (!yokaiAtlas) return false;
+      const cellWidth = Math.floor(yokaiAtlas.width / 4);
+      const cellHeight = Math.floor(yokaiAtlas.height / 3);
+      const footRatios = [
+        [0.91, 0.94, 0.97, 0.97],
+        [0.85, 0.83, 0.83, 0.82],
+        [0.67, 0.64, 0.67, 0.70]
+      ];
+      ctx.save();
+      ctx.translate(x, baseline);
+      if (flip) ctx.scale(-1, 1);
+      if (flash) ctx.filter = "brightness(2.5) saturate(0.2)";
+      ctx.drawImage(
+        yokaiAtlas,
+        column * cellWidth + 2, row * cellHeight + 2, cellWidth - 4, cellHeight - 4,
+        -size / 2, -size * footRatios[row][column], size, size
+      );
+      ctx.restore();
+      return true;
+    }
+
+    function drawEnemy(enemy) {
+      if (enemy.dead && enemy.flash < -0.12) return;
+      if (enemy.type === "bandit") {
+        if (!banditWalkAtlas) return;
+        const baseline = enemy.y + 16;
+        const walkFrame = Math.floor(game.elapsed * 8) % 2;
+        drawGroundShadow(enemy.x, baseline, 15);
+        drawBanditWalkCell(3, walkFrame, enemy.x, baseline, 66, enemy.state !== "escapeTown" && game.hero.x < enemy.x);
+        ctx.save();
+        ctx.translate(enemy.x, enemy.y - 7);
+        ctx.strokeStyle = enemy.flash > 0 ? "#fff5d7" : "#de574e";
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.ellipse(0, 13, 22, 8, 0, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = "#de574e";
+        ctx.beginPath(); ctx.moveTo(0, -35); ctx.lineTo(-7, -47); ctx.lineTo(7, -47); ctx.closePath(); ctx.fill();
+        ctx.restore();
+        if (enemy.hp < enemy.maxHp) {
+          ctx.fillStyle = "#2b2024";
+          ctx.fillRect(enemy.x - 18, enemy.y - 60, 36, 4);
+          ctx.fillStyle = "#ef695c";
+          ctx.fillRect(enemy.x - 18, enemy.y - 60, 36 * enemy.hp / enemy.maxHp, 4);
+        }
+        return;
+      }
+      const moving = enemy.state === "chase" || enemy.state === "wander";
+      const walkFrame = Math.floor((enemy.animDistance || 0) / 9) % 2;
+      const pose = enemy.state === "telegraph" ? 2 : moving ? walkFrame : 0;
+      const facingLeft = enemy.facingX ? enemy.facingX < 0 : game.hero.x < enemy.x;
+      let generated = false;
+      if (enemy.type === "wisp") generated = drawYokaiCell(0, pose, enemy.x, enemy.y + 24, 96, facingLeft, enemy.flash > 0);
+      else if (enemy.type === "prowler") generated = drawYokaiCell(1, pose, enemy.x, enemy.y + 27, 104, facingLeft, enemy.flash > 0);
+      else if (enemy.type === "raider") generated = drawYokaiCell(2, pose, enemy.x, enemy.y + 27, 110, facingLeft, enemy.flash > 0);
+      else if (enemy.type === "boss") generated = drawYokaiCell(3, pose, enemy.x, enemy.y + 34, 138, facingLeft, enemy.flash > 0);
+      if (!generated && enemy.type === "boss") drawOniEnemy(enemy);
+      else if (!generated && enemy.type === "wisp") drawWispEnemy(enemy);
+      else if (!generated && (enemy.type === "prowler" || enemy.type === "raider")) drawProwlerEnemy(enemy);
+      if (enemy.hp < enemy.maxHp) {
+        ctx.fillStyle = "#2b2024";
+        ctx.fillRect(enemy.x - enemy.r, enemy.y - enemy.r - 15, enemy.r * 2, 3);
+        ctx.fillStyle = "#ef695c";
+        ctx.fillRect(enemy.x - enemy.r, enemy.y - enemy.r - 15, enemy.r * 2 * enemy.hp / enemy.maxHp, 3);
+      }
+    }
+
+    function drawWispEnemy(enemy) {
+      const bob = Math.sin(game.elapsed * 5 + enemy.seed) * 3;
+      ctx.save();
+      ctx.translate(enemy.x, enemy.y + bob);
+      ctx.globalAlpha = 0.2;
+      ctx.fillStyle = "#79d8c8";
+      ctx.beginPath(); ctx.arc(0, -5, 19, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = enemy.flash > 0 ? "#fff" : "#4f9b8f";
+      ctx.beginPath();
+      ctx.moveTo(-11, -8); ctx.lineTo(-9, 9); ctx.lineTo(-3, 16); ctx.lineTo(1, 8);
+      ctx.lineTo(6, 16); ctx.lineTo(11, 7); ctx.lineTo(10, -8); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#e7dfbe";
+      ctx.fillRect(-9, -17, 18, 12);
+      ctx.fillStyle = "#26343a";
+      ctx.fillRect(-6, -13, 3, 4); ctx.fillRect(3, -13, 3, 4);
+      ctx.fillRect(-2, -7, 4, 2);
+      ctx.strokeStyle = "#75c5ba"; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(-10, -3); ctx.lineTo(-17, 4); ctx.moveTo(10, -3); ctx.lineTo(17, 4); ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawProwlerEnemy(enemy) {
+      const raider = enemy.type === "raider";
+      ctx.save();
+      ctx.translate(enemy.x, enemy.y);
+      ctx.fillStyle = enemy.flash > 0 ? "#fff" : raider ? "#6f3d43" : "#315e61";
+      ctx.fillRect(-12, -10, 24, 24);
+      ctx.fillRect(-16, -5, 5, 15); ctx.fillRect(11, -5, 5, 15);
+      ctx.fillStyle = "#ddd0a6";
+      ctx.beginPath();
+      ctx.moveTo(-11, -18); ctx.lineTo(-5, -23); ctx.lineTo(0, -18);
+      ctx.lineTo(5, -23); ctx.lineTo(11, -18); ctx.lineTo(9, -5); ctx.lineTo(-9, -5); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = raider ? "#b7493f" : "#222c31";
+      ctx.fillRect(-7, -14, 4, 4); ctx.fillRect(3, -14, 4, 4);
+      ctx.fillRect(-3, -8, 6, 3);
+      ctx.fillStyle = "#b69045";
+      ctx.fillRect(-11, 1, 22, 4);
+      if (raider) {
+        ctx.fillStyle = "#d7b46a";
+        ctx.fillRect(-13, -25, 4, 9); ctx.fillRect(9, -25, 4, 9);
+      }
+      ctx.restore();
+    }
+
+    function drawOniEnemy(enemy) {
+      ctx.save();
+      ctx.translate(enemy.x, enemy.y);
+      ctx.fillStyle = enemy.flash > 0 ? "#fff" : "#613047";
+      ctx.fillRect(-23, -21, 46, 44);
+      ctx.fillRect(-30, -10, 9, 31); ctx.fillRect(21, -10, 9, 31);
+      ctx.fillStyle = "#e2d2a7";
+      ctx.beginPath();
+      ctx.moveTo(-19, -29); ctx.lineTo(-11, -39); ctx.lineTo(-7, -27);
+      ctx.lineTo(7, -27); ctx.lineTo(11, -39); ctx.lineTo(19, -29);
+      ctx.lineTo(16, -10); ctx.lineTo(-16, -10); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#b84038";
+      ctx.fillRect(-13, -24, 7, 5); ctx.fillRect(6, -24, 7, 5);
+      ctx.fillRect(-5, -14, 10, 4);
+      ctx.fillStyle = "#d2a44d"; ctx.fillRect(-22, 2, 44, 6);
+      ctx.restore();
+    }
+
+    function drawWorldParticles() {
+      for (const particle of particles) {
+        if (!particle.world) continue;
+        ctx.globalAlpha = clamp(particle.life * 2, 0, 1);
+        ctx.fillStyle = particle.color;
+        ctx.fillRect(particle.x - 2, particle.y - 2, 4, 4);
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    function drawHud() {
+      drawOpenHudFrame();
+      const section = game.mapId === "inn" ? "CROOKED CARP" : game.mapId === "smith" ? "SPARROW FORGE" : ({
+        town_intro: "POST TOWN", town_escape: "TOWN CHASE", chase_gate: "NORTH GATE",
+        town_gate: "NORTH GATE", town_gate2: "NORTH GATE",
+        chase_field: "HAUNTED FIELD", post_chase_field: "HAUNTED FIELD",
+        spirit_chase: "SPIRIT CHASE", spirit_replay: "SPIRIT PATH", run1: "HAUNTED FIELD",
+        run2: "HAUNTED FIELD", breach: "BELL BREACH"
+      }[game.phase] || "BELL YARD");
+
+      ctx.fillStyle = "#080b10e8";
+      ctx.fillRect(27, 12, 54, 13);
+      ctx.strokeStyle = "#8c6a3c";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(27.5, 12.5, 53, 12);
+      text("YUSUKE", 54, 19, 8, "#ffe4a0", "center", true);
+      if (heroSheet.complete && heroSheet.naturalWidth) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(17, 27, 74, 72);
+        ctx.clip();
+        drawHeroCell(0, 0, 51, 94, 66, false);
+        ctx.restore();
+      }
+      ctx.fillStyle = "#090b10"; ctx.fillRect(18, 105, 72, 8);
+      ctx.fillStyle = "#50343a"; ctx.fillRect(20, 107, 68, 4);
+      ctx.fillStyle = game.hero.hp < game.hero.maxHp * 0.3 ? "#ef6a62" : "#c64d55";
+      ctx.fillRect(20, 107, 68 * clamp(game.hero.hp / game.hero.maxHp, 0, 1), 4);
+      text(section, 229, 33, 13, "#f4e2bb", "center", true);
+
+      const runSmoke = (game.phase === "run1" || game.phase === "run2") && game.runFogMod < 1;
+      const fogReduction = Math.round((1 - game.hero.fogRate * (runSmoke ? game.runFogMod : 1)) * 100);
+      text(`BLADE ${game.hero.damage}`, 147, 61, 9, game.hero.damage > 1 ? "#b8efe2" : "#c4b592", "center", true);
+      text(`WARD ${game.upgrades.length}/2`, 229, 61, 9, game.upgrades.length ? "#f1d47d" : "#c4b592", "center", true);
+      text(game.smokeCharm ? "FOX READY" : fogReduction > 0 ? `FOG -${fogReduction}%` : "FOG 0%", 311, 61, 9,
+        fogReduction > 0 || game.smokeCharm ? "#98e0d8" : "#c4b592", "center", true);
+      text(`HP ${Math.ceil(game.hero.hp)}/${game.hero.maxHp}`, 54, 116, 6, "#e7c8bd", "center", true);
+
+      drawResourcePip(125, 101, "cedar");
+      text("CEDAR", 154, 94, 7, "#bca57d", "center", true);
+      text(`${game.cedar}`, 154, 107, 10, "#f0d88a", "center", true);
+      drawResourcePip(207, 101, "ash");
+      text("ASH", 236, 94, 7, "#83aaa7", "center", true);
+      text(`${game.ash}`, 236, 107, 10, "#9be4db", "center", true);
+      drawResourcePip(289, 101, "mon");
+      text("MON", 318, 94, 7, "#b99b5e", "center", true);
+      text(`${game.mon}`, 318, 107, 10, "#f1d27a", "center", true);
+
+      const safe = game.mapId === "inn" || game.mapId === "smith" ||
+        (game.mapId === "town" && ["town_intro", "chase_gate", "town_gate", "town_gate2"].includes(game.phase));
+      const runState = game.phase === "run1" || game.phase === "run2";
+      const statusLabel = safe ? "SAFE" : runState && game.fogPhase === "clear" ? "CALM" : runState && game.fogPhase === "warning" ? "WIND" : runState ? "FOG" : "DANGER";
+      const statusSafe = safe || (runState && game.fogPhase === "clear");
+      ctx.fillStyle = statusSafe ? "#244b3c" : "#612c34";
+      ctx.fillRect(303, 12, 41, 13);
+      ctx.strokeStyle = statusSafe ? "#72bb8f" : "#dc706d"; ctx.lineWidth = 1; ctx.strokeRect(303.5, 12.5, 40, 12);
+      text(statusLabel, 323, 19, 7, statusSafe ? "#a9e5bd" : "#ffc0b6", "center", true);
+
+      ctx.globalAlpha = objectiveTime > 0 ? 0.96 : 0.76;
+      drawObjectiveRibbon();
+      text("TASK", 35, 147, 6, "#f1cf77", "center", true);
+      fitText(game.objective, 200, 147, 9, "#fff0d0", 266);
+      ctx.globalAlpha = 1;
+
+      if (game.phase === "run1" || game.phase === "run2") {
+        drawFogMeter();
+      } else if (game.phase === "breach") {
+        drawBellMeter();
+      }
+    }
+
+    function drawResourcePip(x, y, type) {
+      if (type === "cedar") {
+        ctx.strokeStyle = "#d8bc70"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(x - 4, y + 3); ctx.lineTo(x + 5, y - 5); ctx.moveTo(x - 5, y - 3); ctx.lineTo(x + 4, y + 4); ctx.stroke();
+      } else {
+        ctx.fillStyle = type === "ash" ? "#77c9c0" : "#d6aa4c";
+        ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = type === "ash" ? "#dff6ec" : "#78501f";
+        ctx.lineWidth = 1; ctx.stroke();
+      }
+    }
+
+    function chamferedPanelPath(x, y, width, height, cut = 5) {
+      ctx.beginPath();
+      ctx.moveTo(x + cut, y);
+      ctx.lineTo(x + width - cut, y);
+      ctx.lineTo(x + width, y + cut);
+      ctx.lineTo(x + width, y + height - cut);
+      ctx.lineTo(x + width - cut, y + height);
+      ctx.lineTo(x + cut, y + height);
+      ctx.lineTo(x, y + height - cut);
+      ctx.lineTo(x, y + cut);
+      ctx.closePath();
+    }
+
+    function drawHudFrame(x, y, width, height) {
+      ctx.save();
+      ctx.fillStyle = "#0008";
+      chamferedPanelPath(x + 3, y + 4, width, height, 6); ctx.fill();
+      ctx.fillStyle = "#241a18";
+      chamferedPanelPath(x, y, width, height, 6); ctx.fill();
+      ctx.strokeStyle = "#d2aa5d"; ctx.lineWidth = 2;
+      chamferedPanelPath(x + 1, y + 1, width - 2, height - 2, 5); ctx.stroke();
+      ctx.fillStyle = "#0d141aeF";
+      chamferedPanelPath(x + 4, y + 4, width - 8, height - 8, 3); ctx.fill();
+      ctx.fillStyle = "#8e3835"; ctx.fillRect(x + 13, y + 5, Math.min(54, width - 26), 2);
+      ctx.fillStyle = "#5f472b"; ctx.fillRect(x + 73, y + 5, Math.max(0, width - 86), 1);
+      for (const [cx, cy] of [[x + 7, y + 7], [x + width - 7, y + 7], [x + 7, y + height - 7], [x + width - 7, y + height - 7]]) {
+        ctx.fillStyle = "#e2bd70";
+        ctx.save(); ctx.translate(cx, cy); ctx.rotate(Math.PI / 4); ctx.fillRect(-2, -2, 4, 4); ctx.restore();
+      }
+      ctx.restore();
+    }
+
+    function drawOpenHudFrame() {
+      ctx.save();
+      const glass = "#070a10c5";
+      const line = "#b88b48";
+      ctx.fillStyle = glass;
+      chamferedPanelPath(8, 7, 92, 113, 5); ctx.fill();
+      chamferedPanelPath(106, 7, 246, 70, 5); ctx.fill();
+      chamferedPanelPath(106, 82, 246, 38, 5); ctx.fill();
+      ctx.strokeStyle = line;
+      ctx.lineWidth = 1;
+      chamferedPanelPath(8.5, 7.5, 91, 112, 5); ctx.stroke();
+      chamferedPanelPath(106.5, 7.5, 245, 69, 5); ctx.stroke();
+      chamferedPanelPath(106.5, 82.5, 245, 37, 5); ctx.stroke();
+      ctx.globalAlpha = 0.55;
+      ctx.beginPath();
+      ctx.moveTo(188, 83); ctx.lineTo(188, 119);
+      ctx.moveTo(270, 83); ctx.lineTo(270, 119);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawObjectiveRibbon() {
+      ctx.save();
+      ctx.fillStyle = "#070a10b8";
+      ctx.fillRect(17, 130, 326, 29);
+      ctx.strokeStyle = "#b88b48b8";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(17, 130.5); ctx.lineTo(343, 130.5);
+      ctx.moveTo(17, 158.5); ctx.lineTo(343, 158.5);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawFogMeter() {
+      const value = clamp(game.fog / 100, 0, 1);
+      const color = game.fog >= 85 ? "#e35f59" : game.fogPhase === "surge" ? "#d3ad55" : "#69aca8";
+      const state = game.fog >= 100 ? "WHITE" : game.fogPhase === "surge" ? "FRONT" : game.fogPhase === "warning" ? "WIND" : "CLEAR";
+      ctx.fillStyle = "#0c1118df"; ctx.fillRect(229, 171, 123, 20);
+      ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.strokeRect(229.5, 171.5, 122, 19);
+      text(state, 237, 181, 6, "#d9e6df", "left", true);
+      ctx.fillStyle = "#273038"; ctx.fillRect(266, 177, 55, 7);
+      ctx.fillStyle = color; ctx.fillRect(267, 178, 53 * value, 5);
+      text(`${Math.round(game.fog)}%`, 344, 181, 8, color, "right", true);
+    }
+
+    function drawBellMeter() {
+      const value = clamp(bell.integrity / bell.maxIntegrity, 0, 1);
+      const color = value < 0.35 ? "#e35f59" : "#d8b24f";
+      ctx.fillStyle = "#0c1118df"; ctx.fillRect(217, 171, 135, 20);
+      ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.strokeRect(217.5, 171.5, 134, 19);
+      text("BELL", 225, 181, 7, "#f0ddad", "left", true);
+      ctx.fillStyle = "#302c28"; ctx.fillRect(262, 177, 55, 7);
+      ctx.fillStyle = color; ctx.fillRect(263, 178, 53 * value, 5);
+      text(`${Math.round(bell.resonance)}%`, 344, 181, 8, "#f0cc69", "right", true);
+    }
+
+    function drawControls() {
+      const controlShade = ctx.createLinearGradient(0, 540, 0, 640);
+      controlShade.addColorStop(0, "#17172200");
+      controlShade.addColorStop(0.48, "#11131a70");
+      controlShade.addColorStop(1, "#080a10d6");
+      ctx.fillStyle = controlShade;
+      ctx.fillRect(0, 540, W, 100);
+      drawMoveSeal();
+      if (game.scene === "platform") {
+        drawActionSeal(actionButton, "JUMP", "jump", "#6f5136");
+        drawActionSeal(contextButton, "SLASH", "katana", "#82363d", true);
+        return;
+      }
+      drawActionSeal(actionButton, actionLabel(), "katana", game.hasKatana ? "#82363d" : "#4b4144");
+      const context = contextAction();
+      if (context) {
+        drawActionSeal(contextButton, context.label, "context", "#28545b", true);
+      }
+    }
+
+    function drawMoveSeal() {
+      if (touchControls.complete && touchControls.naturalWidth) {
+        ctx.save();
+        ctx.globalAlpha = 0.96;
+        drawTouchControlCell(0, 0, stick.x, stick.y, 82);
+        drawTouchControlCell(1, 0, stick.x + stick.dx * 19, stick.y + stick.dy * 19, 82);
+        ctx.restore();
+        return;
+      }
+      ctx.save();
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = "#05070aa8"; ctx.beginPath(); ctx.arc(stick.x + 2, stick.y + 3, stick.r + 2, 0, Math.PI * 2); ctx.fill();
+      const ring = ctx.createRadialGradient(stick.x - 8, stick.y - 9, 4, stick.x, stick.y, stick.r);
+      ring.addColorStop(0, "#45454a"); ring.addColorStop(0.72, "#171b22"); ring.addColorStop(1, "#080a0e");
+      ctx.fillStyle = ring; ctx.beginPath(); ctx.arc(stick.x, stick.y, stick.r, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "#b89051"; ctx.lineWidth = 3; ctx.stroke();
+      ctx.strokeStyle = "#604a2d"; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(stick.x, stick.y, stick.r - 7, 0, Math.PI * 2); ctx.stroke();
+      for (let i = 0; i < 4; i++) {
+        const angle = i * Math.PI / 2;
+        ctx.strokeStyle = "#d7b66b"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(stick.x + Math.cos(angle) * 27, stick.y + Math.sin(angle) * 27);
+        ctx.lineTo(stick.x + Math.cos(angle) * 31, stick.y + Math.sin(angle) * 31); ctx.stroke();
+      }
+      const knobX = stick.x + stick.dx * 19, knobY = stick.y + stick.dy * 19;
+      const knob = ctx.createRadialGradient(knobX - 5, knobY - 6, 2, knobX, knobY, 17);
+      knob.addColorStop(0, "#8a8580"); knob.addColorStop(0.35, "#4c4a4d"); knob.addColorStop(1, "#17181d");
+      ctx.fillStyle = knob; ctx.beginPath(); ctx.arc(knobX, knobY, 16, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "#0a0b0e"; ctx.lineWidth = 2; ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawActionSeal(button, label, icon, color, small = false) {
+      const radius = small ? button.r : button.r;
+      if (touchControls.complete && touchControls.naturalWidth) {
+        let column = 2, row = 0;
+        if (icon === "jump") { column = 0; row = 1; }
+        else if (icon === "context") {
+          const doorway = /ENTER|EXIT|TOWN|CHASE|RETURN/.test(label);
+          column = doorway ? 2 : 1;
+          row = 1;
+        }
+        ctx.save();
+        ctx.globalAlpha = game.hasKatana || icon !== "katana" ? 0.97 : 0.62;
+        const pressedScale = button.down ? 0.93 : 1;
+        drawTouchControlCell(column, row, button.x, button.y, radius * 2.38 * pressedScale);
+        ctx.restore();
+        text(label, button.x, button.y + (small ? 12 : 16), small ? 7 : 8, "#fff1d2", "center", true);
+        return;
+      }
+      ctx.save();
+      ctx.globalAlpha = 0.93;
+      ctx.fillStyle = "#05070ab8"; ctx.beginPath(); ctx.arc(button.x + 2, button.y + 3, radius + 2, 0, Math.PI * 2); ctx.fill();
+      const lacquer = ctx.createRadialGradient(button.x - 8, button.y - 10, 2, button.x, button.y, radius);
+      lacquer.addColorStop(0, button.down ? "#e2bd70" : "#ad6960");
+      lacquer.addColorStop(0.46, button.down ? "#9b7442" : color);
+      lacquer.addColorStop(1, "#281d22");
+      ctx.fillStyle = lacquer; ctx.beginPath(); ctx.arc(button.x, button.y, radius, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "#d4ad61"; ctx.lineWidth = small ? 2 : 3; ctx.stroke();
+      ctx.strokeStyle = "#6f532f"; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(button.x, button.y, radius - 6, 0, Math.PI * 2); ctx.stroke();
+      if (icon === "katana") {
+        ctx.translate(button.x, button.y - (small ? 7 : 10)); ctx.rotate(-0.65);
+        ctx.fillStyle = "#f7ebcf"; ctx.fillRect(-2, small ? -11 : -15, 4, small ? 22 : 28);
+        ctx.fillStyle = "#d8aa4a"; ctx.fillRect(small ? -6 : -8, small ? 9 : 11, small ? 12 : 16, 3);
+      } else if (icon === "jump") {
+        ctx.strokeStyle = "#fff0cf"; ctx.lineWidth = small ? 3 : 4;
+        ctx.beginPath(); ctx.moveTo(button.x - 11, button.y - 3); ctx.lineTo(button.x, button.y - 15); ctx.lineTo(button.x + 11, button.y - 3); ctx.stroke();
+      }
+      ctx.restore();
+      text(label, button.x, button.y + (small ? 12 : 15), small ? 7 : 8, "#fff1d2", "center", true);
+    }
+
+    function drawTouchControlCell(column, row, x, y, size) {
+      const sourceWidth = touchControls.naturalWidth / 3;
+      const sourceHeight = touchControls.naturalHeight / 2;
+      ctx.drawImage(
+        touchControls,
+        column * sourceWidth, row * sourceHeight, sourceWidth, sourceHeight,
+        x - size / 2, y - size / 2, size, size
+      );
+    }
+
+    function actionLabel() {
+      if (game.scene === "platform") return "JUMP";
+      return game.hasKatana ? "SLASH" : "LOCKED";
+    }
+
+    function drawMistBands(alpha) {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      for (let i = 0; i < 8; i++) {
+        const y = ((i * 93 + game.elapsed * (7 + i)) % (H + 100)) - 50;
+        const gradient = ctx.createLinearGradient(0, y - 35, 0, y + 35);
+        gradient.addColorStop(0, "#d8e4df00");
+        gradient.addColorStop(0.5, "#d8e4df");
+        gradient.addColorStop(1, "#d8e4df00");
+        ctx.fillStyle = gradient;
+        ctx.fillRect(-20, y - 35, W + 40, 70);
+      }
+      ctx.restore();
+    }
+
+    function drawRepair() {
+      drawUiMenuSkin();
+      drawBellGraphic(61, 98, 0.5);
+      text("WARD-BELL WORK", 220, 34, 18, "#f2d896", "center", true);
+      text("BUILD ONE UPGRADE", 220, 57, 9, "#bcae94", "center", true);
+      text(`CEDAR ${game.cedar}`, 155, 92, 12, "#efd07d", "center", true);
+      text(`SPIRIT ASH ${game.ash}`, 257, 92, 12, "#91ddd3", "center", true);
+      text("CEDAR FORMS IT  •  ASH SEALS IT", 180, 151, 9, "#ead6a4", "center", true);
+      drawRepairCard(game.upgradeOptions[0], 187, 0);
+      drawRepairCard(game.upgradeOptions[1], 367, 1);
+      text("CHOOSE A REPAIR TO CONTINUE", 180, 584, 11, "#f1ddb0", "center", true);
+    }
+
+    function drawRepairCard(option, y, index) {
+      const canAfford = game.cedar >= option.cedar && game.ash >= option.ash;
+      if (!uiSkin.complete || !uiSkin.naturalWidth) panel(24, y, 312, 160, canAfford ? "#293131" : "#29252c", canAfford ? "#d0a957" : "#625a60");
+      text(`${index + 1}. ${option.name}`, 48, y + 34, 16, canAfford ? "#ffe9b4" : "#8d8587", "left", true);
+      text(canAfford ? "READY" : "NEED MATERIAL", 310, y + 34, 8, canAfford ? "#9ee0b1" : "#a98282", "right", true);
+      fitText(option.detail, 180, y + 78, 12, canAfford ? "#e6ded0" : "#847c7e", 270);
+      text(`${option.cedar} CEDAR FIBER`, 55, y + 119, 10, canAfford ? "#e5c471" : "#7e7478", "left", true);
+      text(`${option.ash} SPIRIT ASH`, 305, y + 119, 10, canAfford ? "#8dd9d0" : "#7e7478", "right", true);
+      text("TAP CARD TO BUILD", 180, y + 144, 7, canAfford ? "#b9ad94" : "#6f6768", "center", true);
+    }
+
+    function drawShop() {
+      drawUiMenuSkin();
+      drawCitizenWalkCell(5, 0, 61, 108, 74, false);
+      text("SPARROW FORGE", 220, 35, 18, "#f6dfaa", "center", true);
+      text("STEEL  •  CHARMS", 220, 58, 9, "#c8b291", "center", true);
+      drawResourcePip(193, 93, "mon");
+      text(`${game.mon} MON`, 210, 94, 13, "#f0cf7c", "left", true);
+      text("YOKAI AND PATH GUARDS CARRY MON", 180, 151, 8, "#c9b68d", "center", true);
+      const options = shopOptions();
+      drawShopCard(options[0], 187, 0);
+      drawShopCard(options[1], 367, 1);
+      text("BACK TO FORGE", 180, 584, 13, "#fff0ca", "center", true);
+    }
+
+    function drawShopCard(option, y, index) {
+      const owned = (option.oneTime && game.shopOwned.includes(option.id)) || (option.id === "smoke" && game.smokeCharm);
+      const available = !owned && game.mon >= option.mon;
+      if (!uiSkin.complete || !uiSkin.naturalWidth) panel(22, y, 316, 160, available ? "#343d36" : "#2b262a", available ? "#d1ac58" : "#675b5d");
+      text(`${index + 1}. ${option.name}`, 48, y + 35, 15, available ? "#ffe5a8" : "#aaa09d", "left", true);
+      text(owned ? "OWNED" : available ? "AVAILABLE" : "TOO POOR", 310, y + 35, 8, available ? "#9ee0b1" : "#927f7a", "right", true);
+      fitText(owned ? "Purchased for this session" : option.detail, 180, y + 81, 12, available ? "#e7ded0" : "#8f8685", 270);
+      text(`${option.mon} MON`, 180, y + 124, 12, available ? "#e5c369" : "#8a7b69", "center", true);
+      text("TAP CARD TO BUY", 180, y + 146, 7, available ? "#b9ad94" : "#6f6768", "center", true);
+    }
+
+    function drawPlatform() {
+      const p = game.platform;
+      ctx.fillStyle = "#101526";
+      ctx.fillRect(0, 0, W, H);
+      ctx.save();
+      ctx.translate(-p.camera * 0.55, 0);
+      if (spiritPathBackdrop.complete && spiritPathBackdrop.naturalWidth) {
+        ctx.drawImage(
+          spiritPathBackdrop,
+          0, 0, spiritPathBackdrop.naturalWidth, spiritPathBackdrop.naturalHeight,
+          -80, 82, 1500, 500
+        );
+      } else {
+        const sky = ctx.createLinearGradient(0, 92, 960, 430);
+        sky.addColorStop(0, "#b85f4f"); sky.addColorStop(0.5, "#535582"); sky.addColorStop(1, "#17243b");
+        ctx.fillStyle = sky; ctx.fillRect(0, 92, 960, 340);
+      }
+      ctx.restore();
+
+      ctx.save();
+      ctx.translate(-p.camera, 0);
+      drawSpiritPathTerrain();
+      for (const goon of p.goons) if (!goon.dead) drawPlatformBandit(goon.x, goon.y, goon.thief, goon);
+      if (!(game.hero.invulnerable > 0 && Math.floor(game.hero.invulnerable * 16) % 2)) {
+        const moving = Math.abs(p.vx) > 1;
+        const column = p.slash > 0 ? 3 : moving ? 1 : 0;
+        if (p.grounded) {
+          const ground = p.y + 18;
+          drawGroundShadow(p.x, ground, 14, 0.46);
+          drawHeroCell(column, 3, p.x, ground, 72, (p.facing || 1) < 0);
+        } else {
+          ctx.save();
+          ctx.translate(p.x, p.y + 18);
+          ctx.rotate((p.vy < 0 ? -0.11 : 0.09) * (p.facing || 1));
+          ctx.scale(1.04, 0.96);
+          drawHeroCell(p.slash > 0 ? 3 : 0, 3, 0, 0, 72, (p.facing || 1) < 0);
+          ctx.restore();
+          if (p.slash > 0) drawAirSlashArc(p);
+        }
+      }
+      ctx.restore();
+      drawHud();
+      drawControls();
+    }
+
+    function drawAirSlashArc(p) {
+      ctx.save();
+      ctx.translate(p.x + (p.facing || 1) * 22, p.y - 7);
+      if ((p.facing || 1) < 0) ctx.scale(-1, 1);
+      ctx.globalAlpha = clamp(p.slash / 0.28, 0.2, 1);
+      ctx.strokeStyle = "#fff1c8";
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(0, 0, 26, -1.05, 1.0);
+      ctx.stroke();
+      ctx.strokeStyle = "#d7a64c";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, 31, -0.96, 0.88);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawSpiritPathTerrain() {
+      for (const segment of SPIRIT_SEGMENTS) drawSpiritTerrainSegment(segment);
+    }
+
+    function drawSpiritTerrainSegment(segment) {
+      const { start, end, y0, y1, art } = segment;
+      const width = end - start;
+      if (spiritTerrainSheet.complete && spiritTerrainSheet.naturalWidth) {
+        const cellWidth = spiritTerrainSheet.naturalWidth / 4;
+        const specs = [
+          { sy: 275, sh: 280, height: 164, contactOffset: 28 },
+          { sy: 270, sh: 285, height: 174, contactOffset: 31 },
+          { sy: 260, sh: 300, height: 190, contactOffset: 32 },
+          { sy: 170, sh: 390, height: 210, contactOffset: 70 }
+        ];
+        const spec = specs[art];
+        const highGround = Math.min(y0, y1);
+        ctx.drawImage(
+          spiritTerrainSheet,
+          art * cellWidth, spec.sy, cellWidth, spec.sh,
+          start - 8, highGround - spec.contactOffset, width + 16, spec.height
+        );
+        return;
+      }
+    }
+
+    function drawPlatformBandit(x, y, thief = false, goon = null) {
+      if (!pathEnemyAtlas) return;
+      drawGroundShadow(x, y, thief ? 16 : 14, 0.46);
+      const frame = goon?.telegraph > 0 ? 2 : Math.floor(game.elapsed * 8 + x * 0.025) % 2;
+      drawPathEnemyCell(goon?.variant ?? (thief ? 2 : 0), frame, x, y + 3, thief ? 78 : 74, goon ? goon.dir < 0 : false);
+      if (goon?.telegraph > 0) {
+        ctx.fillStyle = "#e45b4e";
+        ctx.fillRect(x - 2, y - 55, 4, 12);
+        ctx.fillRect(x - 2, y - 39, 4, 4);
+        ctx.strokeStyle = "#ffca77"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(x, y - 47, 10 + Math.sin(game.elapsed * 18) * 2, 0, Math.PI * 2); ctx.stroke();
+      }
+      if (goon?.thief) {
+        ctx.fillStyle = "#de574e";
+        ctx.beginPath(); ctx.moveTo(x, y - 63); ctx.lineTo(x - 7, y - 75); ctx.lineTo(x + 7, y - 75); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = "#251d22"; ctx.fillRect(x - 19, y - 57, 38, 4);
+        ctx.fillStyle = "#ef695c"; ctx.fillRect(x - 19, y - 57, 38 * goon.hp / goon.maxHp, 4);
+      }
+    }
+
+    function drawOutcome() {
+      const won = game.outcome === "victory";
+      const fogDefeat = !won && game.defeatCause === "fog";
+      const pathDefeat = !won && (game.defeatCause === "path" || game.defeatCause === "ravine");
+      const heading = won ? "THE BELL HOLDS"
+        : fogDefeat ? "LOST IN THE FOG"
+          : pathDefeat ? "THE PATH CLAIMS YOU"
+            : game.defeatCause === "yokai" ? "YOKAI PREVAIL"
+              : game.defeatCause === "defender" ? "THE DEFENDER FALLS" : "THE BELL FALLS";
+      const reason = won ? "The town gets dinner without demons."
+        : fogDefeat ? "A full-pressure fog front took Yusuke's last breath."
+          : game.defeatCause === "ravine" ? "The ravine mist exhausted Yusuke before he recovered the clapper."
+            : game.defeatCause === "path" ? "A path guard ended the clapper pursuit."
+              : game.defeatCause === "yokai" ? "A field yokai ended the supply run."
+                : game.defeatCause === "defender" ? "Yusuke fell while defending the ward bell." : "The gate yokai shattered the town's ward bell.";
+      drawUiMenuSkin();
+      text(heading, 220, 36, heading.length > 18 ? 17 : 21, won ? "#f6dc83" : "#ef8b86", "center", true);
+      text(won ? "RUN COMPLETE" : "EXPEDITION ENDED", 220, 61, 8, "#b9ab94", "center", true);
+      text(`SCORE  ${game.score}`, 220, 95, 15, "#fff0c5", "center", true);
+      wrappedText(reason, 180, 151, 290, 13, 10, "#eee4d6", 2);
+      text("RUN CONDITION", 180, 217, 10, "#b9a379", "center", true);
+      text(`HERO HEALTH`, 58, 258, 9, "#9d907e", "left", true);
+      text(`${Math.max(0, Math.round(game.hero.hp))} / ${game.hero.maxHp}`, 302, 258, 15, "#e4d8c4", "right", true);
+      text(`BELL INTEGRITY`, 58, 301, 9, "#9d907e", "left", true);
+      text(`${Math.max(0, Math.round(bell.integrity))} / ${bell.maxIntegrity}`, 302, 301, 15, "#e4d8c4", "right", true);
+      text(`WARD RESONANCE`, 58, 334, 9, "#9d907e", "left", true);
+      text(`${Math.round(bell.resonance)}%`, 302, 334, 15, "#efd07a", "right", true);
+      text("INSTALLED REPAIRS", 180, 399, 10, "#b9a379", "center", true);
+      if (game.upgrades.length) {
+        text(game.upgrades[0], 180, 449, 14, "#efd795", "center", true);
+        if (game.upgrades[1]) text(game.upgrades[1], 180, 486, 14, "#efd795", "center", true);
+      } else text("None installed", 180, 464, 13, "#aaa094", "center");
+      if (fogDefeat) text(`FOG PRESSURE  ${Math.round(game.fog)}%`, 180, 516, 10, "#ef8b86", "center", true);
+      text("TAP TO TRY AGAIN", 180, 584, 16, "#fff3d4", "center", true);
+    }
+
+    function drawMessage() {
+      ctx.save();
+      ctx.globalAlpha = clamp(messageTime * 2, 0, 1);
+      const runState = game.phase === "run1" || game.phase === "run2" || game.phase === "breach";
+      const x = 55;
+      const width = 250;
+      const maxWidth = 212;
+      const maxLines = game.scene === "shop" ? 3 : 4;
+      const lines = wrappedTextLines(message, maxWidth, 11, maxLines);
+      const height = 21 + lines.length * 16;
+      const y = game.scene === "repair" ? H - height - 20 : game.scene === "shop" ? 150 : runState ? 215 : 199;
+      ctx.fillStyle = "#070a10bd";
+      ctx.fillRect(x, y, width, height);
+      ctx.strokeStyle = "#bd9251c7";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x, y + 0.5); ctx.lineTo(x + width, y + 0.5);
+      ctx.moveTo(x, y + height - 0.5); ctx.lineTo(x + width, y + height - 0.5);
+      ctx.stroke();
+      ctx.fillStyle = "#873735"; ctx.fillRect(x + 10, y + 8, 3, height - 16);
+      text("NOTICE", x + 20, y + 11, 7, "#e7c571", "left", true);
+      ctx.font = "11px Georgia";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = "#fff4df";
+      lines.forEach((item, index) => ctx.fillText(item, 180, y + 27 + index * 16));
+      ctx.restore();
+    }
+
+    function panel(x, y, width, height, fill, stroke) {
+      ctx.fillStyle = fill;
+      ctx.fillRect(x, y, width, height);
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x + 1, y + 1, width - 2, height - 2);
+    }
+
+    function text(value, x, y, size, color, align = "left", bold = false) {
+      ctx.font = `${bold ? "bold " : ""}${size}px Georgia`;
+      ctx.textAlign = align;
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = color;
+      ctx.fillText(value, x, y);
+    }
+
+    function fitText(value, x, y, size, color, width) {
+      ctx.font = `${size}px Georgia`;
+      while (ctx.measureText(value).width > width && size > 8) {
+        size--;
+        ctx.font = `${size}px Georgia`;
+      }
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = color;
+      ctx.fillText(value, x, y);
+    }
+
+    function wrappedTextLines(value, maxWidth, size, maxLines = 3) {
+      ctx.font = `${size}px Georgia`;
+      const words = value.split(/\s+/);
+      const lines = [];
+      let line = "";
+      for (const word of words) {
+        const test = line ? `${line} ${word}` : word;
+        if (ctx.measureText(test).width > maxWidth && line) {
+          lines.push(line);
+          line = word;
+          if (lines.length === maxLines - 1) break;
+        } else line = test;
+      }
+      const consumed = lines.join(" ").split(/\s+/).filter(Boolean).length;
+      if (lines.length < maxLines) {
+        const remaining = words.slice(consumed).join(" ");
+        if (remaining) lines.push(remaining);
+      }
+      if (lines.length > maxLines) lines.length = maxLines;
+      const last = lines.length - 1;
+      if (last >= 0 && ctx.measureText(lines[last]).width > maxWidth) {
+        while (lines[last].length > 3 && ctx.measureText(`${lines[last]}…`).width > maxWidth) lines[last] = lines[last].slice(0, -1);
+        lines[last] += "…";
+      }
+      return lines;
+    }
+
+    function wrappedText(value, x, startY, maxWidth, lineHeight, size, color, maxLines = 3) {
+      const lines = wrappedTextLines(value, maxWidth, size, maxLines);
+      ctx.font = `${size}px Georgia`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = color;
+      lines.forEach((item, index) => ctx.fillText(item, x, startY + index * lineHeight));
+    }
+
+    function bar(x, y, width, height, ratio, color, label) {
+      text(label, x, y - 5, 8, "#b8ad9c", "left", true);
+      ctx.fillStyle = "#332c30";
+      ctx.fillRect(x, y, width, height);
+      ctx.fillStyle = color;
+      ctx.fillRect(x, y, width * clamp(ratio, 0, 1), height);
+    }
+
+    function frame(now) {
+      const dt = Math.min(0.033, (now - last) / 1000 || 0);
+      last = now;
+      update(dt);
+      draw();
+      requestAnimationFrame(frame);
+    }
+
+    requestAnimationFrame(frame);
+  })();
+  </script>
+</body>
+</html>
