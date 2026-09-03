@@ -458,6 +458,14 @@
     function movementInput() {
       let x = stick.dx;
       let y = stick.dy;
+      if (stick.active) {
+        // A thumb rarely lands on the joystick's exact vertical/horizontal axis.
+        // Snap near-cardinal gestures so a deliberate UP/DOWN input cannot
+        // accumulate sideways drift, while still preserving true diagonals.
+        if (Math.abs(y) > 0.22 && Math.abs(x) < Math.abs(y) * 0.48) x = 0;
+        else if (Math.abs(x) > 0.22 && Math.abs(y) < Math.abs(x) * 0.48) y = 0;
+        if (Math.hypot(x, y) < 0.12) { x = 0; y = 0; }
+      }
       if (keys.has("a") || keys.has("arrowleft")) x -= 1;
       if (keys.has("d") || keys.has("arrowright")) x += 1;
       if (keys.has("w") || keys.has("arrowup")) y -= 1;
