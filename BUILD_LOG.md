@@ -1,5 +1,12 @@
 # Build Log
 
+## 2026-09-05 — Human enemy and demon matte cleanup
+
+- Exported real RGBA sheets for the three platform enemies, the human bandit walking sheet, and all four demon types. Removed the outer checkerboard plus reviewed enclosed pockets between arms, weapons, and spectral loops.
+- Darkened neutral pale edge fringes while protecting human facial highlights and retaining demon masks, teeth, blades, and colored attack effects. Corrected the raider attack pose's gray pocket under its arm explicitly.
+- Preserved original atlas dimensions and frame positions. The game now loads the clean PNGs directly instead of attempting background removal at runtime for these three sheets.
+- Reviewed all poses over the forest and cycled the exported frames at game sprite sizes. Sampled guard and raider arm gaps were alpha 0, while the guard eye and wisp mask remained alpha 255. Syntax and whitespace checks passed.
+
 ## 2026-09-05 — Transparent platform outlines
 
 - Replaced the platform terrain sheet with a deterministic Canvas export of the original artwork: a three-pixel black stroke following outer edges and bridge openings, with near-white matte pixels removed and pale edge fringes darkened.
