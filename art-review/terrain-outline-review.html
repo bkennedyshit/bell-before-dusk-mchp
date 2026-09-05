@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Platform outline review</title>
+<style>
+body{margin:24px;background:#11131c;color:#eee;font:16px system-ui}h1{font-size:22px}h2{font-size:18px;margin:16px 0 4px}canvas{display:block;width:100%;max-width:1250px;image-rendering:pixelated;background:#463854}button{padding:10px 16px;margin:12px 0;cursor:pointer}p{max-width:1000px}
+</style>
+<h1>Platform terrain — original artwork with a black edge stroke</h1>
+<p id="status">Loading the production outline renderer…</p>
+<button id="export" disabled>Download transparent outlined PNG</button>
+<h2>Original</h2><canvas id="before" width="2172" height="450"></canvas>
+<h2>Clean edges + 3 px black stroke</h2><canvas id="after" width="2172" height="450"></canvas>
+<script src="terrain-outline.js"></script>
+<script>
+(async () => {
+  const load = async src => { const image = new Image(); image.src = src; await image.decode(); return image; };
+  const image = await load('../assets/environment/spirit-path-terrain-v6-clean.png');
+  const backdrop = await load('../assets/environment/spirit-path-platform-v2.png');
+  const outlined = buildOutlinedTerrain(image);
+  for (const [id, asset] of [['before', image], ['after', outlined]]) {
+    const context = document.getElementById(id).getContext('2d');
+    context.drawImage(backdrop, 0, 0, backdrop.width, backdrop.height, 0, 0, 2172, 450);
+    context.drawImage(asset, 0, 130, 2172, 450, 0, 0, 2172, 450);
+  }
+  const pixels = outlined.getContext('2d').getImageData(0, 0, outlined.width, outlined.height).data;
+  let white = 0, empty = 0;
+  for (let i = 0; i < pixels.length; i += 4) {
+    if (pixels[i+3] === 0) empty++;
+    if (pixels[i+3] > 0 && Math.min(pixels[i],pixels[i+1],pixels[i+2]) > 210 && Math.max(pixels[i],pixels[i+1],pixels[i+2])-Math.min(pixels[i],pixels[i+1],pixels[i+2]) < 24) white++;
+  }
+  const gaps = [[675,445],[812,445],[951,445]].map(([x,y]) => pixels[(y*outlined.width+x)*4+3]);
+  document.getElementById('status').textContent = `${outlined.width} × ${outlined.height} • Remaining white matte pixels: ${white} • Fully transparent pixels: ${empty.toLocaleString()} • Bridge opening alpha: ${gaps.join(', ')} (0 = transparent). Geometry and source colors retained; outlines follow alpha boundaries.`;
+  const button = document.getElementById('export');
+  button.disabled = false;
+  button.onclick = () => outlined.toBlob(blob => {
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'spirit-path-terrain-v7-black-stroke.png';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  }, 'image/png');
+})().catch(error => document.getElementById('status').textContent = error.message);
+</script>
+</html>

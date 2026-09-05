@@ -1,5 +1,12 @@
 # Build Log
 
+## 2026-09-05 — Transparent platform outlines
+
+- Replaced the platform terrain sheet with a deterministic Canvas export of the original artwork: a three-pixel black stroke following outer edges and bridge openings, with near-white matte pixels removed and pale edge fringes darkened.
+- Preserved the 2172 × 724 atlas, platform geometry, cell locations, and collision/contact offsets. Exported an RGBA PNG and verified zero remaining pixels matching the white-matte threshold and alpha 0 inside all three sampled bridge openings.
+- Reviewed the original and outlined artwork against the forest background. The game loads the finished local PNG directly, with no runtime outline processing or network dependency added.
+- Retained the outline routine and before/after preview in art-review for repeatable adjustment and PNG export.
+
 ## 2026-09-03 — Forge keeper counter occlusion
 
 - Corrected the smith's foreground mask to begin at the actual countertop lip rather than partway down the bench.
