@@ -1,0 +1,20 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Field gate boundary review</title>
+<style>body{margin:0;background:#101018;color:#eee;font:15px system-ui;display:flex;gap:20px;justify-content:center}iframe{width:450px;height:800px;border:0}aside{max-width:280px;padding:20px}</style>
+<aside><h2>Field gate boundary review</h2><p>Uses the actual game code, returns from the platform chase, holds UP for five seconds, then releases. Yusuke should remain in front of the gate and stand still.</p><p>The production game has no test shortcut. This isolated page prepares the review state.</p></aside><iframe title="Post-chase field gate boundary"></iframe>
+<script>
+(async()=>{
+ let html=await(await fetch('../index.html')).text();
+ html=html.replace('<head>','<head><base href="/">');
+ const marker='    requestAnimationFrame(frame);\n  })();';
+ if(!html.includes(marker)) throw new Error('Game boot marker changed');
+ html=html.replace(marker,`    resetGame();
+    finishPlatformChase();
+    messageTime = 0;
+    keys.add('arrowup');
+    for (let i = 0; i < 300; i++) updateTopdown(1 / 60);
+    keys.clear();
+    requestAnimationFrame(frame);
+  })();`);
+ document.querySelector('iframe').srcdoc=html;
+})().catch(e=>document.querySelector('aside').append(e.message));
+</script></html>

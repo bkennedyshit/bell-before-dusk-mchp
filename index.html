@@ -188,6 +188,7 @@
     };
 
     function resetGame() {
+      stopHeroTravel();
       Object.assign(game, {
         scene: "topdown", phase: "town_intro", run: 0, elapsed: 0, score: 0,
         cedar: 0, ash: 0, mon: 0, fog: 0, runFogMod: 1, fogWarning: 0, fogPainClock: 0,
@@ -382,7 +383,18 @@
       if (inCircle(p.x, p.y, musicButton)) { toggleMusic(); return; }
       if (game.scene === "repair") { chooseRepairAt(p.x, p.y); return; }
       if (game.scene === "shop") { chooseShopAt(p.x, p.y); return; }
+      if (p.y < 164) { stopHeroTravel(); return; }
+      if (messageTime > 0) {
+        const notice = messageLayout();
+        if (p.x >= notice.x && p.x <= notice.x + notice.width && p.y >= notice.y && p.y <= notice.y + notice.height) {
+          messageTime = 0;
+          stopHeroTravel();
+          return;
+        }
+      }
       if (p.x < 160 && p.y > 480) {
+        if (stick.active) return;
+        game.tapTarget = null;
         stick.active = true;
         stick.id = event.pointerId;
         updateStick(p.x, p.y);
@@ -395,13 +407,16 @@
         actionButton.id = event.pointerId;
         if (game.scene === "platform") doJump();
         else doAttack();
-      } else if (game.scene === "topdown" && contextAction() && inCircle(p.x, p.y, contextButton)) {
-        contextButton.down = true;
-        contextButton.id = event.pointerId;
-        doInteract();
+      } else if (game.scene === "topdown" && inCircle(p.x, p.y, contextButton)) {
+        if (contextAction()) {
+          contextButton.down = true;
+          contextButton.id = event.pointerId;
+          doInteract();
+        }
       } else if (game.scene === "topdown") {
         const zoom = (game.mapId === "inn" || game.mapId === "smith") ? 1 : CAMERA_ZOOM;
-        game.tapTarget = { x: p.x / zoom + cameraX, y: p.y / zoom + cameraY };
+        const target = { x: p.x / zoom + cameraX, y: p.y / zoom + cameraY };
+        game.tapTarget = blockedAt(game.hero, target.x, target.y) ? null : target;
       }
     });
 
@@ -423,7 +438,13 @@
       }
     }
     canvas.addEventListener("pointerup", releasePointer);
-    canvas.addEventListener("pointercancel", releasePointer);
+    canvas.addEventListener("pointercancel", stopHeroTravel);
+    canvas.addEventListener("lostpointercapture", releasePointer);
+    addEventListener("pointerup", releasePointer);
+    addEventListener("blur", stopHeroTravel);
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) stopHeroTravel();
+    });
 
     function updateStick(x, y) {
       const dx = x - stick.x;
@@ -436,6 +457,7 @@
 
     addEventListener("keydown", event => {
       keys.add(event.key.toLowerCase());
+      if (["w", "a", "s", "d", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(event.key.toLowerCase())) game.tapTarget = null;
       if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(event.key.toLowerCase())) event.preventDefault();
       if (event.key === " " && !event.repeat) {
         startAudio();
@@ -510,7 +532,7 @@
       if (game.mapId === "outside") {
         if (game.phase === "chase_field" && near(hero, spiritTrail, 76)) return { label: "CHASE", type: "spiritTrail" };
         if ((game.phase === "run1" || game.phase === "run2") && near(hero, spiritTrail, 76)) return { label: "PATH", type: "revisitPath" };
-        if (near(hero, sealedGate, 70)) return { label: "SEALED", type: "sealedGate" };
+        if (near(hero, sealedGate, 94)) return { label: "SEALED", type: "sealedGate" };
         if (game.phase === "post_chase_field" && near(hero, outsideGate, 78)) return { label: "TOWN", type: "returnAfterChase" };
         if ((game.phase === "run1" || game.phase === "run2") && near(hero, outsideGate, 78)) return { label: "RETURN", type: "returnGate" };
         const node = game.nodes.find(item => item.active && near(hero, item, 58));
@@ -615,10 +637,13 @@
 
     function stopHeroTravel() {
       game.tapTarget = null;
+      keys.clear();
       stick.active = false;
       stick.id = null;
       stick.dx = 0;
       stick.dy = 0;
+      actionButton.down = false; actionButton.id = null;
+      contextButton.down = false; contextButton.id = null;
       if (game.hero) game.hero.moving = false;
     }
 
@@ -782,6 +807,7 @@
     }
 
     function startPlatform(revisit = false) {
+      stopHeroTravel();
       const returnState = revisit ? {
         phase: game.phase,
         run: game.run,
@@ -817,6 +843,7 @@
     }
 
     function beginChaseField() {
+      stopHeroTravel();
       Object.assign(game, {
         scene: "topdown", phase: "chase_field", run: 0, mapId: "outside",
         enemies: [], nodes: [], fog: 0, spawnClock: 0
@@ -836,6 +863,7 @@
     }
 
     function finishPlatformChase() {
+      stopHeroTravel();
       Object.assign(game, {
         scene: "topdown", phase: "post_chase_field", mapId: "outside",
         enemies: [], nodes: [], platform: null, banditFled: true, chaseComplete: true
@@ -854,6 +882,7 @@
     function finishPlatformReplay() {
       const state = game.platform?.returnState;
       if (!state) return;
+      stopHeroTravel();
       Object.assign(game, {
         scene: "topdown", mapId: "outside", phase: state.phase, run: state.run,
         fog: state.fog, fogPhase: state.fogPhase, fogPhaseClock: state.fogPhaseClock,
@@ -870,6 +899,7 @@
     }
 
     function returnToTownAfterChase() {
+      stopHeroTravel();
       Object.assign(game, {
         scene: "topdown", mapId: "town", phase: "town_gate", enemies: [], nodes: [], run: 0
       });
@@ -901,6 +931,7 @@
     }
 
     function beginRun(number) {
+      stopHeroTravel();
       Object.assign(game, {
         scene: "topdown", phase: number === 1 ? "run1" : "run2", run: number,
         mapId: "outside", pendingRun: 0,
@@ -928,7 +959,7 @@
     function makeNodes(number) {
       const positions = number === 1
         ? [[360, 850], [350, 750], [400, 610], [365, 540], [330, 450], [520, 300]]
-        : [[385, 850], [350, 730], [430, 600], [450, 560], [330, 475], [560, 380], [550, 280], [580, 170]];
+        : [[385, 850], [350, 730], [430, 600], [450, 560], [330, 475], [560, 380], [550, 280], [580, 215]];
       return positions.map(([x, y]) => ({ x, y, active: true, pulse: Math.random() * 6.28 }));
     }
 
@@ -992,6 +1023,7 @@
     }
 
     function prepareTownDeparture(number) {
+      stopHeroTravel();
       Object.assign(game, {
         scene: "topdown", mapId: "town", phase: number === 1 ? "town_gate" : "town_gate2",
         pendingRun: number, enemies: [], nodes: []
@@ -1007,6 +1039,7 @@
     }
 
     function startBreach() {
+      stopHeroTravel();
       Object.assign(game, {
         scene: "topdown", mapId: "town", phase: "breach", run: 3, enemies: [], nodes: [],
         breachTime: 0, spawnClock: 0.7, bossSpawned: false,
@@ -1092,6 +1125,11 @@
     }
 
     function mapColliders() {
+      if (game.mapId === "outside") return [
+        // Keep the actor in front of the north wall and both painted gates.
+        // Gate travel is an explicit context action, never walking into the art.
+        { x: 0, y: 0, w: FIELD_W, h: 185 }
+      ];
       if (game.mapId === "town") return [
         // Outside the final breach, the complete fenced bell garden is scenery.
         // During the breach the yard opens, while the bell structure itself stays solid.
@@ -1126,9 +1164,7 @@
 
     function fieldWalkableAt(x, y, r) {
       const openAreas = [
-        { x: 55, y: 135, w: 610, h: 770 },
-        { x: 315, y: 70, w: 90, h: 120 },
-        { x: 565, y: 70, w: 105, h: 155 }
+        { x: 55, y: 185, w: 610, h: 720 }
       ];
       return openAreas.some(rect => insideRect(x, y, r, rect));
     }
@@ -1210,7 +1246,8 @@
         const beforeX = hero.x;
         const beforeY = hero.y;
         moveActor(hero, input.x * hero.speed * dt, input.y * hero.speed * dt);
-        if (game.tapTarget && Math.hypot(hero.x - beforeX, hero.y - beforeY) < 0.02) {
+        hero.moving = Math.hypot(hero.x - beforeX, hero.y - beforeY) >= 0.02;
+        if (game.tapTarget && !hero.moving) {
           game.tapTarget = null;
           hero.moving = false;
         }
@@ -2961,9 +2998,7 @@
       text("TAP TO TRY AGAIN", 180, 584, 16, "#fff3d4", "center", true);
     }
 
-    function drawMessage() {
-      ctx.save();
-      ctx.globalAlpha = clamp(messageTime * 2, 0, 1);
+    function messageLayout() {
       const runState = game.phase === "run1" || game.phase === "run2" || game.phase === "breach";
       const x = 55;
       const width = 250;
@@ -2972,6 +3007,13 @@
       const lines = wrappedTextLines(message, maxWidth, 11, maxLines);
       const height = 21 + lines.length * 16;
       const y = game.scene === "repair" ? H - height - 20 : game.scene === "shop" ? 150 : runState ? 215 : 199;
+      return { x, y, width, height, lines };
+    }
+
+    function drawMessage() {
+      ctx.save();
+      ctx.globalAlpha = clamp(messageTime * 2, 0, 1);
+      const { x, y, width, height, lines } = messageLayout();
       ctx.fillStyle = "#070a10bd";
       ctx.fillRect(x, y, width, height);
       ctx.strokeStyle = "#bd9251c7";

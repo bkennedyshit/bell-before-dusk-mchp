@@ -1,5 +1,14 @@
 # Build Log
 
+## 2026-09-05 — Stuck movement and haunted-field gate boundary
+
+- Reproduced stale tap/held input carrying across Spirit Path transitions: the previous code could move the returned hero from Y 208 to approximately Y 79. Scene transitions now clear travel targets, held keys, and touch-button state.
+- Added lost-pointer-capture, window blur, page backgrounding, and pointer-cancel cleanup. A second touch cannot take ownership of the joystick, and touching its center immediately cancels tap travel.
+- HUD, notices, and inactive context controls no longer create destinations behind their overlays. Notice taps dismiss the notice; destinations in solid scenery are rejected.
+- Closed the north field wall and gate corridors at Y 185, keeping Yusuke's collision circle in front of the painted torii/stone gate. Retained reachable CHASE/PATH/SEALED and south return interactions, and moved the northern resource node onto the reachable path.
+- Walk animation now stops when collision prevents movement, even if a direction remains held.
+- All 12 input/boundary regression checks passed; the pre-fix version failed 11. Visually verified an isolated real-game scene after holding UP for five seconds: Yusuke remained on the approach path below the gate. Production contains no test shortcut.
+
 ## 2026-09-05 — Human enemy and demon matte cleanup
 
 - Exported real RGBA sheets for the three platform enemies, the human bandit walking sheet, and all four demon types. Removed the outer checkerboard plus reviewed enclosed pockets between arms, weapons, and spectral loops.
