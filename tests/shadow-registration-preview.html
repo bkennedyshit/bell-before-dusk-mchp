@@ -1,0 +1,62 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Ground registration review</title>
+<style>body{margin:0;background:#171722;color:#eee;font:14px system-ui}p{margin:12px}iframe{display:block;width:1000px;height:1050px;border:0}</style>
+<p>Actual game renderer: all standing/walking directions. Each cross marks one fixed world ground point. The feet and shadow should meet there.</p>
+<iframe title="Character ground registration"></iframe>
+<script>
+(async () => {
+  let html = await (await fetch('../index.html')).text();
+  html = html.replace('<head>', '<head><base href="/">');
+  const marker = '    requestAnimationFrame(frame);\n  })();';
+  if (!html.includes(marker)) throw new Error('Game boot marker changed');
+  html = html.replace(marker, `
+    resetGame();
+    if (parent.location.search.includes('town')) {
+      messageTime = 0;
+      game.hero.y = 920; game.hero.facingX = 1; game.hero.facingY = 0;
+      cameraX = 382; cameraY = 550;
+      document.getElementById('frame').style.cssText = 'width:540px;height:960px';
+      function townReview() {
+        if (!citizenWalkAtlas || !citizenVerticalAtlas || !townPanorama.complete || !heroSheet.complete) {requestAnimationFrame(townReview);return;}
+        draw();
+      }
+      requestAnimationFrame(townReview);
+      return;
+    }
+    canvas.width = 1000; canvas.height = 1050;
+    document.getElementById('frame').style.cssText = 'width:1000px;height:1050px';
+    document.getElementById('rotate').remove();
+    function review() {
+      if (!citizenWalkAtlas || !citizenVerticalAtlas || !heroSheet.complete) {requestAnimationFrame(review);return;}
+      ctx.imageSmoothingEnabled = false;
+      ctx.fillStyle = '#b2935e'; ctx.fillRect(0,0,1000,1050);
+      const names = ['Front 1','Front 2','Back 1','Back 2','Left 1','Left 2','Right 1','Right 2'];
+      const label = (s,x,y) => {ctx.fillStyle='#201b16';ctx.font='14px sans-serif';ctx.textAlign='center';ctx.fillText(s,x,y);};
+      const guide = (x,y) => {ctx.strokeStyle='#795126';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x-35,y);ctx.lineTo(x+35,y);ctx.moveTo(x,y-7);ctx.lineTo(x,y+8);ctx.stroke();};
+      const rows = ['Yusuke','Mayor','Fisherman','Merchant','Townswoman'];
+      rows.forEach((name,r) => {
+        const ground = 160 + r*190;
+        label(name,500,ground-130);
+        for(let i=0;i<8;i++) {
+          const x = 60 + i*125;
+          guide(x,ground);
+          if(r===0) {
+            const facing=[[0,1],[0,1],[0,-1],[0,-1],[-1,0],[-1,0],[1,0],[1,0]][i];
+            game.elapsed = i%2 ? 1/7 : 0;
+            Object.assign(game.hero,{x,y:ground-15,moving:!!(i%2),facingX:facing[0],facingY:facing[1],attackFx:0});
+            drawHero(game.hero);
+          } else {
+            const col=[0,0,1,4,2][r];
+            drawGroundShadow(x,ground,15);
+            if(i<4) drawCitizenVerticalCell(col,i,x,ground,76);
+            else drawCitizenWalkCell(col,i%2,x,ground,76,i<6);
+          }
+          label(names[i],x,ground+30);
+        }
+      });
+      document.title = 'Ground registration: rendered';
+    }
+    requestAnimationFrame(review);
+  })();`);
+  document.querySelector('iframe').srcdoc = html;
+})().catch(error => document.querySelector('p').textContent = error.stack);
+</script></html>

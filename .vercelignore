@@ -8,6 +8,8 @@ Stop-Phone-Test.ps1
 .gitignore
 design/
 dist/
+tests/
+art-review/
 
 # Local alternate encodes; the runtime uses the universal MP3 cuts.
 assets/audio/*.webm

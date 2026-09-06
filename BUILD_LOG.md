@@ -652,3 +652,11 @@
 - Added a ground shadow to the playable Yusuke sprite so the player no longer reads as hovering when the plaza texture is busy.
 - Re-anchored the vertical civilian rows using the main opaque foot mass rather than stray anti-aliased pixels at the bottom of the source cells; the chief's rear pose now meets its shadow instead of leaving a visible gap.
 - Rechecked the opening plaza at the phone viewport with both Yusuke and the official visible together.
+
+### Horizontal foot registration and full directional review
+
+- Corrected the remaining horizontal offset: the mayor's front feet are at 63.1% of his source cell width, not its center. All civilian frames now align both feet with the world ground point used by their shadow, including mirrored side poses.
+- Applied measured horizontal and vertical anchors to every top-down Yusuke standing, walking, and attack pose. This covers the previously omitted right-facing frames and both walk steps; HUD and platform presentation placement is preserved.
+- Measured the principal connected silhouette so fragments from neighboring rows cannot be mistaken for feet, and corrected the merchant/townswoman rear anchors as well. Moved shadow centers one pixel behind the sole line for visible foot overlap.
+- Added an isolated review page showing all eight standing/walking directions side by side for Yusuke and four townspeople, plus a town scene matching the reported right-facing case. Both were visually inspected.
+- The rendering regression test compares 78 actual draw destinations/flips with independently measured source pixels and passes within 0.01 world pixel. Existing movement/boundary checks also pass. Review tools stay out of the deployed game.
