@@ -30,11 +30,34 @@
  reviewButton('Walk away',()=>{game.hero.x=440;});
  reviewButton('Title button',()=>{mode='title';});
  reviewButton('Thief front and rear',()=>{mode='thief';renderReview();});
+ let originalWalk, originalVertical;
+ reviewButton('Runner fringe before / after',()=>{
+   originalWalk ||= buildTransparentCitizenAtlas(citizenWalkSheet);
+   if(!originalVertical){originalVertical=buildTransparentCitizenAtlas(citizenVerticalSheet);
+     originalVertical.getContext('2d').clearRect(0,750,originalVertical.width,18);}
+   mode='fringe';renderReview();
+ });
  reviewButton('Pause / resume',()=>{running=!running;});
  reviewButton('Advance footfall',()=>{for(const p of game.residents){p.walkDistance+=5;p.moving=true;}renderReview();});
  function renderReview(){
    ctx.imageSmoothingEnabled=false;ctx.fillStyle='#b69760';ctx.fillRect(0,0,1100,450);
-   if(mode==='thief') {
+   if(mode==='fringe') {
+     ctx.fillStyle='#15212b';ctx.fillRect(0,0,1100,450);
+     const cleanWalk=citizenWalkAtlas,cleanVertical=citizenVerticalAtlas;
+     for(let row=0;row<2;row++) {
+       if(row===0){citizenWalkAtlas=originalWalk;citizenVerticalAtlas=originalVertical;}
+       else {citizenWalkAtlas=cleanWalk;citizenVerticalAtlas=cleanVertical;}
+       for(let col=0;col<6;col++) {
+         const x=90+col*180,y=170+row*215;
+         ctx.save();ctx.translate(x,y);ctx.scale(2,2);
+         drawEnemy({type:'bandit',x:0,y:-16,hp:2,maxHp:2,animDistance:col%2?9:0,
+           facingX:col>=4?-1:0,facingY:col<2?1:col<4?-1:0});ctx.restore();
+         ctx.fillStyle='#f4e3be';ctx.font='13px sans-serif';ctx.textAlign='center';
+         ctx.fillText((row?'CLEAN ':'BEFORE ')+['front 1','front 2','rear 1','rear 2','side 1','side 2'][col],x,y+28);
+       }
+     }
+     citizenWalkAtlas=cleanWalk;citizenVerticalAtlas=cleanVertical;
+   } else if(mode==='thief') {
      ['Introduction','Running north: step 1','Running north: step 2','Running west'].forEach((label,i)=>{
        const x=140+i*270;
        ctx.save();ctx.translate(x,240);ctx.scale(2.5,2.5);
@@ -67,7 +90,7 @@
    const dt=Math.min(.033,(now-previous)/1000);previous=now;
    if(citizenWalkAtlas&&citizenVerticalAtlas&&townPanorama.complete){
      if(running){if(mode==='north')for(const p of game.residents){p.walkDistance+=p.speed*dt;p.moving=true;}
-       else if(mode!=='title'&&mode!=='thief') updateResidents(dt);}
+       else if(!['title','thief','fringe'].includes(mode)) updateResidents(dt);}
      renderReview();
    }
    requestAnimationFrame(review);

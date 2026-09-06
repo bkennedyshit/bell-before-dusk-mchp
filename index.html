@@ -48,7 +48,10 @@
     outsideBackdrop.src = "assets/environment/haunted-field-open-v2.png";
     const citizenWalkSheet = new Image();
     let citizenWalkAtlas = null;
-    citizenWalkSheet.addEventListener("load", () => { citizenWalkAtlas = buildTransparentCitizenAtlas(citizenWalkSheet); });
+    citizenWalkSheet.addEventListener("load", () => {
+      citizenWalkAtlas = buildTransparentCitizenAtlas(citizenWalkSheet);
+      cleanRunnerMatte(citizenWalkAtlas, 2);
+    });
     citizenWalkSheet.src = "assets/characters/edo-citizens-sidewalk-v2.png";
     const citizenPortraitSheet = new Image();
     let citizenPortraitAtlas = null;
@@ -65,6 +68,7 @@
         citizenVerticalAtlas.width,
         18
       );
+      cleanRunnerMatte(citizenVerticalAtlas, 4);
     });
     citizenVerticalSheet.src = "assets/characters/edo-citizens-verticalwalk-v1.png";
     const banditWalkSheet = new Image();
@@ -275,6 +279,68 @@
       }
       atlasCtx.putImageData(pixels, 0, 0);
       return atlas;
+    }
+
+    function cleanRunnerMatte(atlas, rows) {
+      // Only column 3 contains the thief. Keep the neighboring civilians intact.
+      const context = atlas.getContext("2d", { willReadFrequently: true });
+      const width = Math.floor(atlas.width / 6), height = atlas.height;
+      const pixels = context.getImageData(width * 3, 0, width, height);
+      const data = pixels.data, count = width * height;
+      const visited = new Uint8Array(count), queue = new Int32Array(count);
+      const isMatte = p => {
+        const i = p * 4;
+        return Math.min(data[i], data[i + 1], data[i + 2]) > 210 &&
+          Math.max(data[i], data[i + 1], data[i + 2]) - Math.min(data[i], data[i + 1], data[i + 2]) < 24;
+      };
+      for (let seed = 0; seed < count; seed++) {
+        if (visited[seed] || !isMatte(seed)) continue;
+        let head = 0, tail = 1, minX = width, maxX = 0, minY = height, maxY = 0;
+        let transparent = false, gray = 0, white = 0;
+        queue[0] = seed; visited[seed] = 1;
+        while (head < tail) {
+          const p = queue[head++], x = p % width, y = Math.floor(p / width), i = p * 4;
+          minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+          minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+          transparent ||= data[i + 3] === 0;
+          const value = Math.min(data[i], data[i + 1], data[i + 2]);
+          if (value >= 248) white++;
+          if (value >= 233 && value <= 244) gray++;
+          for (const next of [x > 0 ? p - 1 : -1, x < width - 1 ? p + 1 : -1,
+            y > 0 ? p - width : -1, y < height - 1 ? p + width : -1]) {
+            if (next >= 0 && !visited[next] && isMatte(next)) {
+              visited[next] = 1; queue[tail++] = next;
+            }
+          }
+        }
+        const localX = (minX + maxX) / 2 / width;
+        const centerY = (minY + maxY) / 2, rowHeight = Math.floor(height / rows);
+        const localY = (centerY % rowHeight) / rowHeight;
+        const front = rows === 2 || centerY < rowHeight * 2;
+        const face = front && localX > 0.3 && localX < 0.78 && localY > 0.1 && localY < 0.48;
+        const pocket = (tail > 40 && gray > tail * 0.12 && white > tail * 0.35) ||
+          (tail > 150 && white > tail * 0.7);
+        if (transparent || (!face && pocket)) {
+          for (let k = 0; k < tail; k++) data[queue[k] * 4 + 3] = 0;
+        }
+      }
+      // Darken the pale matte fringe at transparent edges, without growing the
+      // silhouette or filling openings between arms, legs, and carried objects.
+      const alpha = new Uint8Array(count);
+      for (let p = 0; p < count; p++) alpha[p] = data[p * 4 + 3];
+      for (let y = 2; y < height - 2; y++) for (let x = 2; x < width - 2; x++) {
+        const p = y * width + x, i = p * 4;
+        if (!alpha[p]) continue;
+        const low = Math.min(data[i], data[i + 1], data[i + 2]);
+        const high = Math.max(data[i], data[i + 1], data[i + 2]);
+        if (low < 120 || high - low > 36) continue;
+        let edge = false;
+        for (let dy = -2; dy <= 2 && !edge; dy++) for (let dx = -2; dx <= 2; dx++) {
+          if (dx * dx + dy * dy <= 4 && alpha[p + dy * width + dx] === 0) { edge = true; break; }
+        }
+        if (edge) data[i] = data[i + 1] = data[i + 2] = 0;
+      }
+      context.putImageData(pixels, width * 3, 0);
     }
 
     function startAudio() {

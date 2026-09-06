@@ -684,3 +684,9 @@
 - Added a 0.7-second front-facing introduction in town, then select facing from actual movement. Northbound town/field escape uses both rear footfalls; west/east movement uses the matching side pose.
 - Footfalls now advance with distance traveled, not elapsed time, so a stopped thief does not walk in place. Existing measured ground anchors are reused.
 - Visually checked the introduction, both rear steps, and west-facing art. The escape regression checks introduction timing, facing, gate progression, field escape, independence from player position, and blocked footsteps. Crowd, input, and shadow suites remain green.
+
+### Runner matte and white-fringe cleanup
+
+- Added a targeted Canvas transparency pass for the thief's column in the shared front/rear and side sheets. It removes connected pale matte and enclosed checkerboard pockets, then darkens neutral fringe pixels along transparent edges.
+- The cleanup runs once when the images load and changes only the runner's cells. Facial highlights, original frame dimensions, foot anchors, and animation poses are preserved; the other civilians are untouched.
+- Reviewed all six front/rear/side frames before and after on a dark background. The visible white flecks around the head wrap, limbs, and carried items are gone. Existing escape and ground-registration checks pass.
