@@ -550,6 +550,8 @@
         game.phase = "town_escape";
         const runner = spawnEnemy("bandit", 650, 800);
         runner.state = "escapeTown";
+        runner.revealTime = 0.7;
+        runner.facingX = 0; runner.facingY = 1;
         runner.route = [[590, 800], [540, 720], [540, 620]];
         runner.routeIndex = 0;
         setObjective("The clapper thief is escaping through North Gate");
@@ -778,7 +780,7 @@
         damage: stats[2], r: stats[3], moveR: Math.max(7, stats[3] * 0.65), hitClock: 0, flash: 0,
         dead: false, boss: type === "boss", seed: Math.random() * 20,
         state: type === "bandit" ? "patrol" : "wander", stateClock: 0.6 + Math.random(),
-        animDistance: 0, facingX: 0
+        animDistance: 0, facingX: 0, facingY: type === "bandit" ? 1 : 0
       };
       game.enemies.push(enemy);
       return enemy;
@@ -1228,7 +1230,8 @@
       const distance = Math.hypot(movedX, movedY);
       if (distance > 0.01) {
         enemy.animDistance = (enemy.animDistance || 0) + distance;
-        if (Math.abs(movedX) > 0.02) enemy.facingX = Math.sign(movedX);
+        if (enemy.type === "bandit") faceResident(enemy, movedX, movedY);
+        else if (Math.abs(movedX) > 0.02) enemy.facingX = Math.sign(movedX);
       }
     }
 
@@ -1474,6 +1477,10 @@
       const hero = game.hero;
 
       if (enemy.type === "bandit") {
+        if (enemy.revealTime > 0) {
+          enemy.revealTime = Math.max(0, enemy.revealTime - dt);
+          return;
+        }
         if (enemy.state === "escapeTown" || enemy.state === "escapeField") {
           const point = enemy.route?.[enemy.routeIndex || 0];
           if (!point) {
@@ -2499,11 +2506,17 @@
     function drawEnemy(enemy) {
       if (enemy.dead && enemy.flash < -0.12) return;
       if (enemy.type === "bandit") {
-        if (!banditWalkAtlas) return;
+        if (!citizenWalkAtlas || !citizenVerticalAtlas) return;
         const baseline = enemy.y + 16;
-        const walkFrame = Math.floor(game.elapsed * 8) % 2;
+        const walkFrame = Math.floor((enemy.animDistance || 0) / 9) % 2;
         drawGroundShadow(enemy.x, baseline, 15);
-        drawBanditWalkCell(3, walkFrame, enemy.x, baseline, 66, enemy.state !== "escapeTown" && game.hero.x < enemy.x);
+        // The thief has full front/back/side art in the civilian atlases.
+        // Face actual travel, never the player's position while fleeing.
+        if (enemy.facingY || !enemy.facingX) {
+          drawCitizenVerticalCell(3, enemy.facingY < 0 ? 2 + walkFrame : walkFrame, enemy.x, baseline, 66);
+        } else {
+          drawCitizenWalkCell(3, walkFrame, enemy.x, baseline, 66, enemy.facingX < 0);
+        }
         ctx.save();
         ctx.translate(enemy.x, enemy.y - 7);
         ctx.fillStyle = "#de574e";

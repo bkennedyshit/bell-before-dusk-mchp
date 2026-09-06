@@ -677,3 +677,10 @@
 - Raised the title-button subtitle from y=539 to y=531, bringing it inside the black inset with clearance above the lower decorative border. The existing raster button frame is unchanged.
 - Eight crowd tests, twelve input/boundary checks, and 78 sprite-anchor checks pass. Added a four-second contact/pose stability and release test; visually reviewed enlarged close contact and the title-button text placement.
 - The user's additional “old SVG” frame discrepancy remains awaiting identification; no SVG is referenced by the game and no speculative frame redesign was included.
+
+### Thief introduction and directional escape
+
+- Reused the existing thief front, rear, and side frames (column 3 in the civilian atlases). The old escape renderer used only a three-quarter front pose and flipped it based on player position, creating backward travel.
+- Added a 0.7-second front-facing introduction in town, then select facing from actual movement. Northbound town/field escape uses both rear footfalls; west/east movement uses the matching side pose.
+- Footfalls now advance with distance traveled, not elapsed time, so a stopped thief does not walk in place. Existing measured ground anchors are reused.
+- Visually checked the introduction, both rear steps, and west-facing art. The escape regression checks introduction timing, facing, gate progression, field escape, independence from player position, and blocked footsteps. Crowd, input, and shadow suites remain green.

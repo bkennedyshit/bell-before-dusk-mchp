@@ -29,11 +29,20 @@
    Object.assign(game.hero,{x:379,y:895,facingX:-1,facingY:0});});
  reviewButton('Walk away',()=>{game.hero.x=440;});
  reviewButton('Title button',()=>{mode='title';});
+ reviewButton('Thief front and rear',()=>{mode='thief';renderReview();});
  reviewButton('Pause / resume',()=>{running=!running;});
  reviewButton('Advance footfall',()=>{for(const p of game.residents){p.walkDistance+=5;p.moving=true;}renderReview();});
  function renderReview(){
    ctx.imageSmoothingEnabled=false;ctx.fillStyle='#b69760';ctx.fillRect(0,0,1100,450);
-   if(mode==='title') {
+   if(mode==='thief') {
+     ['Introduction','Running north: step 1','Running north: step 2','Running west'].forEach((label,i)=>{
+       const x=140+i*270;
+       ctx.save();ctx.translate(x,240);ctx.scale(2.5,2.5);
+       drawEnemy({type:'bandit',x:0,y:-16,hp:2,maxHp:2,animDistance:i===2?9:0,
+         facingX:i===3?-1:0,facingY:i===0?1:i===3?0:-1});ctx.restore();
+       ctx.fillStyle='#201a12';ctx.font='16px sans-serif';ctx.textAlign='center';ctx.fillText(label,x,300);
+     });
+   } else if(mode==='title') {
      ctx.save();ctx.translate(100,-860);ctx.scale(2.1,2.1);drawTitle();ctx.restore();
    } else if(mode==='contact') {
      ctx.save();ctx.translate(500,290);ctx.scale(3,3);ctx.translate(-379,-895);
@@ -58,7 +67,7 @@
    const dt=Math.min(.033,(now-previous)/1000);previous=now;
    if(citizenWalkAtlas&&citizenVerticalAtlas&&townPanorama.complete){
      if(running){if(mode==='north')for(const p of game.residents){p.walkDistance+=p.speed*dt;p.moving=true;}
-       else if(mode!=='title') updateResidents(dt);}
+       else if(mode!=='title'&&mode!=='thief') updateResidents(dt);}
      renderReview();
    }
    requestAnimationFrame(review);
