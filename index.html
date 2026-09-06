@@ -216,10 +216,11 @@
 
     function makeResidents() {
       return [
-        { x: 170, y: 790, axis: "x", low: 80, high: 390, dir: 1, speed: 30, column: 1, row: 0, role: "FISHERMAN", line: "Fisherman: The inn is west. The forge is east. The fish refuse to choose sides." },
-        { x: 350, y: 805, axis: "y", low: 745, high: 945, dir: 1, speed: 24, column: 4, row: 0, role: "MERCHANT", line: "Merchant: Cedar fiber binds the ward repairs. Ash makes the binding hold." },
-        { x: 850, y: 790, axis: "y", low: 740, high: 935, dir: -1, speed: 27, column: 2, row: 0, role: "TOWNSWOMAN", line: "Townswoman: The smith sharpens steel. Her conversation is less polished." }
-      ];
+        { x: 170, y: 790, speed: 30, column: 1, role: "FISHERMAN", route: [[410,790],[410,945],[130,945],[130,760],[170,760],[170,790]], line: "Fisherman: The inn is west. The forge is east. The fish refuse to choose sides." },
+        { x: 350, y: 895, speed: 26, column: 4, role: "MERCHANT", route: [[650,895],[650,755],[300,755],[300,895],[350,895]], line: "Merchant: Cedar fiber binds the ward repairs. Ash makes the binding hold." },
+        { x: 850, y: 790, speed: 27, column: 2, role: "TOWNSWOMAN", route: [[900,790],[900,945],[720,945],[720,760],[850,760],[850,790]], line: "Townswoman: The smith sharpens steel. Her conversation is less polished." }
+      ].map(person => ({ ...person, r: 8, moveR: 8, routeIndex: 0,
+        facingX: 1, facingY: 0, walkDistance: 0, moving: false, pause: 0 }));
     }
 
     function setObjective(value) {
@@ -521,12 +522,12 @@
       }
       if (game.mapId === "town") {
         if (game.phase === "town_intro" && near(hero, official, 64)) return { label: "TALK", type: "official" };
-        if (game.phase !== "town_intro" && game.phase !== "breach" && near(hero, official, 54)) return { label: "TALK", type: "officialAgain" };
+        if (game.phase !== "town_intro" && game.phase !== "breach" && near(hero, official, 68)) return { label: "TALK", type: "officialAgain" };
         if (["chase_gate", "town_gate", "town_gate2"].includes(game.phase) && near(hero, townGate, 76)) return { label: "ENTER", type: "enterGate" };
         if (game.doorCooldown <= 0 && game.phase !== "breach" && near(hero, innDoor, 62)) return { label: "ENTER", type: "enterInn" };
         if (game.doorCooldown <= 0 && game.phase !== "breach" && near(hero, smithDoor, 62)) return { label: "ENTER", type: "enterSmith" };
         if (game.phase === "breach" && near(hero, bell, 70)) return { label: "RING", type: "ring" };
-        const resident = game.residents.find(person => near(hero, person, 48));
+        const resident = game.residents.find(person => near(hero, person, 68));
         if (resident) return { label: "TALK", type: "resident", resident };
       }
       if (game.mapId === "outside") {
@@ -570,7 +571,12 @@
       else if (action.type === "leaveSmith") leaveSmith();
       else if (action.type === "rest") restAtInn();
       else if (action.type === "shop") openShop();
-      else if (action.type === "resident") say(action.resident.line, 3.4);
+      else if (action.type === "resident") {
+        action.resident.pause = 3.4;
+        action.resident.moving = false;
+        faceResident(action.resident, game.hero.x - action.resident.x, game.hero.y - action.resident.y);
+        say(action.resident.line, 3.4);
+      }
       else if (action.type === "sealedGate") say(game.chaseComplete
         ? "The northern ward gate is sealed in this prototype. The forest remains hostile behind you."
         : "A ward lock bars the northern gate. The thief cut toward the torii trail instead.", 4);
@@ -1138,8 +1144,7 @@
           : { x: bell.x - 67, y: bell.y - 91, w: 134, h: 161 },
         // The painted south gate includes a deep tiled roof. It is scenery, not a
         // continuation of the street, so keep a hard stop in front of its eaves.
-        { x: 438, y: 1006, w: 204, h: 194 },
-        ...(game.phase === "breach" ? [] : [{ x: official.x - 10, y: official.y + 1, w: 20, h: 12 }])
+        { x: 438, y: 1006, w: 204, h: 194 }
       ];
       return [];
     }
@@ -1180,14 +1185,17 @@
       if (game.mapId === "town" && !townWalkableAt(x, y, entity.moveR || entity.r)) return true;
       if ((game.mapId === "inn" || game.mapId === "smith") && !interiorWalkableAt(x, y, entity.moveR || entity.r)) return true;
       if (mapColliders().some(rect => circleHitsRect(x, y, entity.moveR || entity.r, rect))) return true;
+      if (game.mapId === "town" && game.phase !== "breach" &&
+          (entity === game.hero || game.residents.includes(entity))) {
+        // Shared personal space: both sides check the same ground-space oval.
+        // Extra north/south room keeps tall sprites from crowding one another.
+        const actors = [game.hero, official, ...game.residents];
+        if (actors.some(actor => actor !== entity && crowdOverlap(x, y, actor))) return true;
+      }
       if (entity === game.hero && game.mapId === "town") {
         // The north-gate art is a threshold, not walkable pavement. Keep Yusuke on
         // the town side until ENTER is pressed, matching the field-side return stop.
         if (game.phase !== "breach" && circleHitsRect(x, y, entity.moveR || entity.r, { x: 455, y: 570, w: 155, h: 68 })) return true;
-        const actors = game.phase === "breach" ? [] : [official, ...game.residents];
-        for (const actor of actors) {
-          if (Math.hypot(x - actor.x, y - actor.y) < (entity.moveR || entity.r) + 22) return true;
-        }
         for (const enemy of game.enemies) {
           if (!enemy.dead && Math.hypot(x - enemy.x, y - enemy.y) < (entity.moveR || entity.r) + enemy.moveR) return true;
         }
@@ -1201,10 +1209,14 @@
 
     function moveActor(entity, dx, dy) {
       const bounds = mapBounds();
-      const nextX = clamp(entity.x + dx, bounds.left, bounds.right);
-      if (!blockedAt(entity, nextX, entity.y)) entity.x = nextX;
-      const nextY = clamp(entity.y + dy, bounds.top, bounds.bottom);
-      if (!blockedAt(entity, entity.x, nextY)) entity.y = nextY;
+      // Sweep short steps so a slow frame cannot tunnel through a person/fence.
+      const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / 4));
+      for (let step = 0; step < steps; step++) {
+        const nextX = clamp(entity.x + dx / steps, bounds.left, bounds.right);
+        if (!blockedAt(entity, nextX, entity.y)) entity.x = nextX;
+        const nextY = clamp(entity.y + dy / steps, bounds.top, bounds.bottom);
+        if (!blockedAt(entity, entity.x, nextY)) entity.y = nextY;
+      }
     }
 
     function moveEnemyAnimated(enemy, dx, dy) {
@@ -1276,27 +1288,60 @@
       } else if (game.phase === "breach" && bell.integrity <= 0) finish("defeat", "bell");
     }
 
+    function crowdOverlap(x, y, actor) {
+      return ((x - actor.x) / 48) ** 2 + ((y - actor.y) / 60) ** 2 < 1;
+    }
+
+    function faceResident(person, dx, dy) {
+      // Hysteresis keeps diagonals/avoidance from flickering between atlases.
+      const vertical = person.facingY !== 0;
+      if (Math.abs(dy) > Math.abs(dx) * (vertical ? 0.8 : 1.2)) {
+        person.facingX = 0; person.facingY = Math.sign(dy) || 1;
+      } else {
+        person.facingX = Math.sign(dx) || 1; person.facingY = 0;
+      }
+    }
+
+    function residentPose(person) {
+      // One alternating footfall every five world pixels, independent of FPS.
+      const step = person.moving ? Math.floor(person.walkDistance / 5) % 2 : 0;
+      return { vertical: person.facingY !== 0,
+        row: person.facingY < 0 ? 2 + step : step, flip: person.facingX < 0 };
+    }
+
     function updateResidents(dt) {
+      const steps = Math.max(1, Math.ceil(dt / (1 / 30)));
+      for (let step = 0; step < steps; step++) updateResidentStep(dt / steps);
+    }
+
+    function updateResidentStep(dt) {
       for (const person of game.residents) {
         person.pause = Math.max(0, (person.pause || 0) - dt);
         person.moving = false;
         if (person.pause > 0) continue;
-        const amount = person.speed * person.dir * dt;
-        const nextX = person.axis === "x" ? person.x + amount : person.x;
-        const nextY = person.axis === "y" ? person.y + amount : person.y;
-        if (Math.hypot(game.hero.x - nextX, game.hero.y - nextY) < 36) {
-          person.pause = 0.22;
+        const target = person.route[person.routeIndex];
+        const dx = target[0] - person.x, dy = target[1] - person.y;
+        const distance = Math.hypot(dx, dy);
+        if (distance < 1) {
+          person.routeIndex = (person.routeIndex + 1) % person.route.length;
+          person.pause = 0.35;
           continue;
         }
-        person.x = nextX;
-        person.y = nextY;
-        person.moving = true;
-        person.walkClock = (person.walkClock || 0) + Math.abs(amount) / 18;
-        const value = person.axis === "x" ? person.x : person.y;
-        if (value <= person.low || value >= person.high) {
-          if (person.axis === "x") person.x = clamp(person.x, person.low, person.high);
-          else person.y = clamp(person.y, person.low, person.high);
-          person.dir *= -1;
+        const amount = Math.min(person.speed * dt, distance);
+        const heading = Math.atan2(dy, dx);
+        // Look ahead and pass on the right. Head-on walkers choose opposite
+        // physical sides; if every opening is blocked, wait instead of pushing.
+        for (const turn of [0, Math.PI / 4, -Math.PI / 4, Math.PI / 2, -Math.PI / 2]) {
+          const vx = Math.cos(heading + turn), vy = Math.sin(heading + turn);
+          const look = Math.min(distance, amount + 8);
+          if (blockedAt(person, person.x + vx * look, person.y + vy * look) ||
+              blockedAt(person, person.x + vx * amount, person.y + vy * amount)) continue;
+          person.x += vx * amount;
+          person.y += vy * amount;
+          person.walkDistance += amount;
+          person.moving = true;
+          faceResident(person, vx, vy);
+          break;
         }
       }
     }
@@ -1712,12 +1757,13 @@
       ctx.translate(-cameraX, -cameraY);
       drawWorld();
       for (const node of game.nodes) if (node.active) drawNode(node);
+      const actors = game.enemies.map(enemy => ({ y: enemy.y, draw: () => drawEnemy(enemy) }));
       if (game.mapId === "town" && game.phase !== "breach") {
-        drawOfficial();
-        drawTownResidents();
+        actors.push({ y: official.y, draw: drawOfficial });
+        for (const person of game.residents) actors.push({ y: person.y, draw: () => drawTownResident(person) });
       }
-      for (const enemy of game.enemies) drawEnemy(enemy);
-      drawHero(game.hero);
+      actors.push({ y: game.hero.y, draw: () => drawHero(game.hero) });
+      actors.sort((a, b) => a.y - b.y).forEach(actor => actor.draw());
       drawWorldParticles();
       ctx.restore();
       if (["chase_field", "post_chase_field"].includes(game.phase) && game.mapId === "outside") {
@@ -2107,19 +2153,16 @@
       ctx.fillRect(official.x - 2, official.y - 8, 4, 13);
     }
 
-    function drawTownResidents() {
+    function drawTownResident(person) {
       if (!citizenWalkAtlas) return;
-      for (const person of game.residents) {
         const baseline = person.y + 16;
-        const frame = person.moving ? Math.floor((person.walkClock || 0) * 2) % 2 : 0;
+        const pose = residentPose(person);
         drawGroundShadow(person.x, baseline, 14);
-        if (person.axis === "y" && citizenVerticalAtlas) {
-          const directionRow = person.dir > 0 ? frame : 2 + frame;
-          drawCitizenVerticalCell(person.column, directionRow, person.x, baseline, 58);
+        if (pose.vertical && citizenVerticalAtlas) {
+          drawCitizenVerticalCell(person.column, pose.row, person.x, baseline, 58);
         } else {
-          drawCitizenWalkCell(person.column, frame, person.x, baseline, 58, person.dir < 0);
+          drawCitizenWalkCell(person.column, pose.row % 2, person.x, baseline, 58, pose.flip);
         }
-      }
     }
 
     function drawNode(node) {

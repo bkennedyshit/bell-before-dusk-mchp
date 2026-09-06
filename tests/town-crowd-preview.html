@@ -1,0 +1,59 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Town walking review</title>
+<style>body{margin:12px;background:#191923;color:#eee;font:15px system-ui}iframe{display:block;width:1100px;height:450px;border:0;margin-top:12px}button{padding:8px;margin:4px}</style>
+<p>Actual game art and movement. Review street loops, personal-space passing, and northbound footfalls.</p>
+<iframe title="Walking review"></iframe>
+<script>
+(async()=>{
+ let html=await(await fetch('../index.html')).text();
+ html=html.replace('<head>','<head><base href="/">');
+ const marker='    requestAnimationFrame(frame);\n  })();';
+ if(!html.includes(marker))throw Error('Boot marker changed');
+ html=html.replace(marker,`
+ resetGame();messageTime=0;
+ canvas.width=1100;canvas.height=450;
+ document.getElementById('frame').style.cssText='width:1100px;height:450px';
+ document.getElementById('rotate').remove();
+ game.hero.x=980;game.hero.y=950;
+ let mode='routes',running=true;
+ const reviewBar=parent.document.createElement('div');parent.document.querySelector('iframe').before(reviewBar);
+ function reviewButton(text,fn){const b=parent.document.createElement('button');b.textContent=text;b.onclick=fn;reviewBar.append(b);}
+ reviewButton('Town routes',()=>{resetGame();game.hero.x=980;game.hero.y=950;mode='routes';});
+ reviewButton('Head-on crossing',()=>{resetGame();game.hero.x=980;game.hero.y=950;mode='routes';
+   const [a,b]=game.residents;game.residents=[a,b];
+   Object.assign(a,{x:240,y:900,route:[[470,900],[240,900]]});
+   Object.assign(b,{x:470,y:900,route:[[240,900],[470,900]]});});
+ reviewButton('Northbound steps',()=>{resetGame();mode='north';});
+ reviewButton('Pause / resume',()=>{running=!running;});
+ reviewButton('Advance footfall',()=>{for(const p of game.residents){p.walkDistance+=5;p.moving=true;}renderReview();});
+ function renderReview(){
+   ctx.imageSmoothingEnabled=false;ctx.fillStyle='#b69760';ctx.fillRect(0,0,1100,450);
+   if(mode==='north') {
+     game.residents.forEach((p,i)=>{
+       p.x=160+i*350;p.y=175;p.facingX=0;p.facingY=-1;
+       ctx.save();ctx.translate(p.x,100);ctx.scale(2.5,2.5);ctx.translate(-p.x,-p.y);
+       drawTownResident(p);ctx.restore();
+       ctx.fillStyle='#201a12';ctx.font='17px sans-serif';ctx.textAlign='center';
+       ctx.fillText(p.role+' / rear row '+residentPose(p).row,p.x,190);
+     });
+   } else {
+     ctx.save();ctx.translate(0,-660);drawWorld();
+     const actors=[{y:official.y,draw:drawOfficial},{y:game.hero.y,draw:()=>drawHero(game.hero)},
+       ...game.residents.map(p=>({y:p.y,draw:()=>drawTownResident(p)}))];
+     actors.sort((a,b)=>a.y-b.y).forEach(a=>a.draw());ctx.restore();
+   }
+ }
+ let previous=performance.now();
+ function review(now){
+   const dt=Math.min(.033,(now-previous)/1000);previous=now;
+   if(citizenWalkAtlas&&citizenVerticalAtlas&&townPanorama.complete){
+     if(running){if(mode==='north')for(const p of game.residents){p.walkDistance+=p.speed*dt;p.moving=true;}
+       else updateResidents(dt);}
+     renderReview();
+   }
+   requestAnimationFrame(review);
+ }
+ requestAnimationFrame(review);
+  })();`);
+ document.querySelector('iframe').srcdoc=html;
+})().catch(e=>document.querySelector('p').textContent=e.stack);
+</script></html>

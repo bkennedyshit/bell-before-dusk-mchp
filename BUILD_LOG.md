@@ -660,3 +660,12 @@
 - Measured the principal connected silhouette so fragments from neighboring rows cannot be mistaken for feet, and corrected the merchant/townswoman rear anchors as well. Moved shadow centers one pixel behind the sole line for visible foot overlap.
 - Added an isolated review page showing all eight standing/walking directions side by side for Yusuke and four townspeople, plus a town scene matching the reported right-facing case. Both were visually inspected.
 - The rendering regression test compares 78 actual draw destinations/flips with independently measured source pixels and passes within 0.01 world pixel. Existing movement/boundary checks also pass. Review tools stay out of the deployed game.
+
+### Town routes, personal space, and distance-driven footfalls
+
+- Replaced the residents' one-axis oscillation with individual street loops using all four directions, short stops at corners, and pauses during conversation. The official remains at his quest position.
+- Residents now use the same scenery and personal-space checks as Yusuke. Look-ahead steering lets them pass each other, and blocked walkers wait without pushing or animating in place. Movement is substepped to prevent tunneling on slow frames.
+- Increased the existing two-frame walking cadence to one footfall per five world pixels and select front/back/side frames from actual travel direction, with hysteresis to prevent diagonal facing flicker. No new raster assets or artificial body bounce were introduced.
+- Depth-sort world actors by ground position and keep conversation ranges reachable outside the wider personal-space boundary.
+- Seven movement regressions cover three minutes of crowd spacing and all eight directional steps, head-on passing, player collision, blocked animation, northbound rear rows, talk reach, and frame-rate independence. Existing input/boundary and 78-pose shadow tests pass.
+- Visually inspected both rear footfalls enlarged using the actual renderer and the head-on crossing in the town scene. The local review page stays out of production.
