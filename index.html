@@ -103,6 +103,7 @@
     const TOWN_Y = 480;
     const FIELD_W = 720;
     const FIELD_H = 1080;
+    const FIELD_WALK_AREA = { x: 55, y: 185, w: 610, h: 720 };
     const CAMERA_ZOOM = 1.14;
     const SPIRIT_WORLD_W = 1320;
     const SPIRIT_SEGMENTS = [
@@ -808,8 +809,7 @@
         const facing = (dx * hero.facingX + dy * hero.facingY) / (distance || 1);
         if (distance < 56 && facing > -0.15) {
           enemy.hp -= hero.damage;
-          enemy.x += hero.facingX * 18;
-          enemy.y += hero.facingY * 18;
+          moveActor(enemy, hero.facingX * 18, hero.facingY * 18);
           enemy.flash = 0.13;
           struck = true;
           screenShake = 4;
@@ -848,6 +848,7 @@
         state: type === "bandit" ? "patrol" : "wander", stateClock: 0.6 + Math.random(),
         animDistance: 0, facingX: 0, facingY: type === "bandit" ? 1 : 0
       };
+      if (game.mapId === "outside") constrainFieldEnemy(enemy);
       game.enemies.push(enemy);
       return enemy;
     }
@@ -1202,7 +1203,7 @@
       if (game.mapId === "outside") return [
         // Keep the actor in front of the north wall and both painted gates.
         // Gate travel is an explicit context action, never walking into the art.
-        { x: 0, y: 0, w: FIELD_W, h: 185 }
+        { x: 0, y: 0, w: FIELD_W, h: FIELD_WALK_AREA.y }
       ];
       if (game.mapId === "town") return [
         // Outside the final breach, the complete fenced bell garden is scenery.
@@ -1236,10 +1237,16 @@
     }
 
     function fieldWalkableAt(x, y, r) {
-      const openAreas = [
-        { x: 55, y: 185, w: 610, h: 720 }
-      ];
-      return openAreas.some(rect => insideRect(x, y, r, rect));
+      return insideRect(x, y, r, FIELD_WALK_AREA);
+    }
+
+    function constrainFieldEnemy(enemy) {
+      // Match the walkable field, including the actor's collision radius.
+      // A small inset avoids floating-point contact with the wall boundary.
+      const inset = (enemy.moveR || enemy.r) + 1;
+      const area = FIELD_WALK_AREA;
+      enemy.x = clamp(enemy.x, area.x + inset, area.x + area.w - inset);
+      enemy.y = clamp(enemy.y, area.y + inset, area.y + area.h - inset);
     }
 
     function circleHitsRect(x, y, r, rect) {
@@ -1484,13 +1491,15 @@
         const limit = game.run === 1 ? 2 : 3;
         if (game.spawnClock <= 0 && active < limit) {
           const type = game.run === 2 && Math.random() > 0.48 ? "prowler" : "wisp";
-          let x = clamp(hero.x + (Math.random() > 0.5 ? 120 : -120), 48, FIELD_W - 48);
-          let y = clamp(hero.y + (Math.random() > 0.5 ? 125 : -125), 145, FIELD_H - 65);
-          if (!fieldWalkableAt(x, y, 12)) {
-            x = clamp(hero.x + (Math.random() - 0.5) * 90, 120, FIELD_W - 120);
-            y = clamp(hero.y - 85, 150, FIELD_H - 80);
+          const dx = Math.random() > 0.5 ? 120 : -120;
+          const dy = Math.random() > 0.5 ? 125 : -125;
+          const enemy = spawnEnemy(type, hero.x + dx, hero.y + dy);
+          // At field corners, projection can bring a spawn too close. Use
+          // the opposite side, then apply the same field boundary again.
+          if (near(enemy, hero, 90)) {
+            enemy.x = hero.x - dx; enemy.y = hero.y - dy;
+            constrainFieldEnemy(enemy);
           }
-          spawnEnemy(type, x, y);
           game.spawnClock = game.run === 1 ? 7 : 4.7;
         }
         if (game.fogPhase === "surge" && game.fog >= 100) {
@@ -1538,6 +1547,9 @@
     function updateEnemy(enemy, dt) {
       enemy.flash -= dt;
       if (enemy.dead) return;
+      if (game.mapId === "outside" && !fieldWalkableAt(enemy.x, enemy.y, enemy.moveR || enemy.r)) {
+        constrainFieldEnemy(enemy);
+      }
       enemy.hitClock -= dt;
       enemy.stateClock -= dt;
       const hero = game.hero;

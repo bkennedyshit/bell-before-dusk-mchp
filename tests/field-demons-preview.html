@@ -1,0 +1,23 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Gate demon recovery review</title>
+<style>body{margin:0;background:#101018;color:#eee;font:15px system-ui;display:flex;gap:20px;justify-content:center}iframe{width:450px;height:800px;border:0}aside{max-width:260px;padding:20px}button{padding:10px;margin:10px 0;display:block}</style>
+<aside><p>Actual game renderer: two demons deliberately placed in the old invalid gate spawn. Advance to verify both recover onto the field and approach Yusuke.</p></aside><iframe title="Gate demon recovery"></iframe>
+<script>
+(async()=>{
+ let html=await(await fetch('../index.html')).text();html=html.replace('<head>','<head><base href="/">');
+ const marker='    requestAnimationFrame(frame);\n  })();';
+ if(!html.includes(marker))throw Error('Game boot marker changed');
+ html=html.replace(marker,`
+    resetGame();game.mapId='outside';game.phase='run2';game.run=2;game.hasKatana=true;
+    game.fogPhase='clear';game.fogPhaseClock=1000;game.spawnClock=1000;game.nodes=[];
+    Object.assign(game.hero,{x:360,y:290});cameraX=220;cameraY=0;messageTime=0;
+    function seedReview(){game.enemies=[];for(const x of [430,510]){const e=spawnEnemy('wisp',x,240);e.y=150;}draw();}
+    const reviewAside=parent.document.querySelector('aside');
+    for(const [label,action] of [['Show old trapped positions',seedReview],['Advance recovery two seconds',()=>{
+      for(let i=0;i<120;i++){game.elapsed+=1/60;for(const e of game.enemies)updateEnemy(e,1/60);}draw();
+    }]]){const b=parent.document.createElement('button');b.textContent=label;b.onclick=action;reviewAside.append(b);}
+    function ready(){if(!yokaiAtlas||!outsideBackdrop.complete||!heroSheet.complete){requestAnimationFrame(ready);return;}seedReview();}
+    requestAnimationFrame(ready);
+  })();`);
+ document.querySelector('iframe').srcdoc=html;
+})().catch(e=>document.querySelector('aside').append(e.message));
+</script></html>

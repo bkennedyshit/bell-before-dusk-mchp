@@ -690,3 +690,11 @@
 - Added a targeted Canvas transparency pass for the thief's column in the shared front/rear and side sheets. It removes connected pale matte and enclosed checkerboard pockets, then darkens neutral fringe pixels along transparent edges.
 - The cleanup runs once when the images load and changes only the runner's cells. Facial highlights, original frame dimensions, foot anchors, and animation poses are preserved; the other civilians are untouched.
 - Reviewed all six front/rear/side frames before and after on a dark background. The visible white flecks around the head wrap, limbs, and carried items are gone. Existing escape and ground-registration checks pass.
+
+### Demon gate spawn and knockback boundary correction
+
+- Reproduced the trapped demons: the fallback spawn selected y=150 even though the north wall blocks the field above y=185. Collision checks then prevented those actors from moving back into the legal area.
+- Field spawns now use the shared walkable rectangle and each enemy's collision radius. Corner spawns that end up too close to Yusuke use the opposite side. Invalid restored enemy positions recover onto the field on their next update.
+- Routed sword knockback through collision-aware movement so attacks cannot push enemies into the wall. The north wall height and walkable area now share the same boundary definition.
+- The regression fails on the prior build at (120,150), then passes 32 edge/corner spawn and pursuit cases, trapped-position recovery, and real sword knockback. Existing input/gate and thief escape checks pass.
+- Visually reproduced two demons inside the gate, advanced the actual game simulation two seconds, and verified both moved onto the field toward Yusuke. Refreshed the offline ZIP for this correction.
