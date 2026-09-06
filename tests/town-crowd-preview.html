@@ -23,11 +23,22 @@
    Object.assign(a,{x:240,y:900,route:[[470,900],[240,900]]});
    Object.assign(b,{x:470,y:900,route:[[240,900],[470,900]]});});
  reviewButton('Northbound steps',()=>{resetGame();mode='north';});
+ reviewButton('Touching merchant',()=>{resetGame();mode='contact';
+   const p=game.residents[1];game.residents=[p];
+   Object.assign(p,{x:350,y:895,route:[[650,895]],walkDistance:18});
+   Object.assign(game.hero,{x:379,y:895,facingX:-1,facingY:0});});
+ reviewButton('Walk away',()=>{game.hero.x=440;});
+ reviewButton('Title button',()=>{mode='title';});
  reviewButton('Pause / resume',()=>{running=!running;});
  reviewButton('Advance footfall',()=>{for(const p of game.residents){p.walkDistance+=5;p.moving=true;}renderReview();});
  function renderReview(){
    ctx.imageSmoothingEnabled=false;ctx.fillStyle='#b69760';ctx.fillRect(0,0,1100,450);
-   if(mode==='north') {
+   if(mode==='title') {
+     ctx.save();ctx.translate(100,-860);ctx.scale(2.1,2.1);drawTitle();ctx.restore();
+   } else if(mode==='contact') {
+     ctx.save();ctx.translate(500,290);ctx.scale(3,3);ctx.translate(-379,-895);
+     drawWorld();drawTownResident(game.residents[0]);drawHero(game.hero);ctx.restore();
+   } else if(mode==='north') {
      game.residents.forEach((p,i)=>{
        p.x=160+i*350;p.y=175;p.facingX=0;p.facingY=-1;
        ctx.save();ctx.translate(p.x,100);ctx.scale(2.5,2.5);ctx.translate(-p.x,-p.y);
@@ -47,7 +58,7 @@
    const dt=Math.min(.033,(now-previous)/1000);previous=now;
    if(citizenWalkAtlas&&citizenVerticalAtlas&&townPanorama.complete){
      if(running){if(mode==='north')for(const p of game.residents){p.walkDistance+=p.speed*dt;p.moving=true;}
-       else updateResidents(dt);}
+       else if(mode!=='title') updateResidents(dt);}
      renderReview();
    }
    requestAnimationFrame(review);

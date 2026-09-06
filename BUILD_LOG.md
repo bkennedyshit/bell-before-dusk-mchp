@@ -669,3 +669,11 @@
 - Depth-sort world actors by ground position and keep conversation ranges reachable outside the wider personal-space boundary.
 - Seven movement regressions cover three minutes of crowd spacing and all eight directional steps, head-on passing, player collision, blocked animation, northbound rear rows, talk reach, and frame-rate independence. Existing input/boundary and 78-pose shadow tests pass.
 - Visually inspected both rear footfalls enlarged using the actual renderer and the head-on crossing in the town scene. The local review page stays out of production.
+
+### Close contact, merchant pose stability, and title subtitle
+
+- Replaced the oversized 48-by-60 ground separation oval with a compact 28-by-18 foot-level collider. Yusuke can reach the sprites; depth ordering handles normal body occlusion.
+- Nearby residents yield at contact, hold their current footfall instead of snapping to frame zero, and resume only once the player has moved clear. A separate release threshold prevents boundary chatter; avoidance headings are held briefly instead of reconsidered every frame.
+- Raised the title-button subtitle from y=539 to y=531, bringing it inside the black inset with clearance above the lower decorative border. The existing raster button frame is unchanged.
+- Eight crowd tests, twelve input/boundary checks, and 78 sprite-anchor checks pass. Added a four-second contact/pose stability and release test; visually reviewed enlarged close contact and the title-button text placement.
+- The user's additional “old SVG” frame discrepancy remains awaiting identification; no SVG is referenced by the game and no speculative frame redesign was included.

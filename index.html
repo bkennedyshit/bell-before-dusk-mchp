@@ -1187,8 +1187,8 @@
       if (mapColliders().some(rect => circleHitsRect(x, y, entity.moveR || entity.r, rect))) return true;
       if (game.mapId === "town" && game.phase !== "breach" &&
           (entity === game.hero || game.residents.includes(entity))) {
-        // Shared personal space: both sides check the same ground-space oval.
-        // Extra north/south room keeps tall sprites from crowding one another.
+        // Shared foot-level collider. Bodies may occlude naturally in depth;
+        // do not use the full sprite height as an invisible exclusion zone.
         const actors = [game.hero, official, ...game.residents];
         if (actors.some(actor => actor !== entity && crowdOverlap(x, y, actor))) return true;
       }
@@ -1289,7 +1289,7 @@
     }
 
     function crowdOverlap(x, y, actor) {
-      return ((x - actor.x) / 48) ** 2 + ((y - actor.y) / 60) ** 2 < 1;
+      return ((x - actor.x) / 28) ** 2 + ((y - actor.y) / 18) ** 2 < 1;
     }
 
     function faceResident(person, dx, dy) {
@@ -1304,7 +1304,8 @@
 
     function residentPose(person) {
       // One alternating footfall every five world pixels, independent of FPS.
-      const step = person.moving ? Math.floor(person.walkDistance / 5) % 2 : 0;
+      // Freeze on the current planted pose when stopped, not a different frame.
+      const step = Math.floor(person.walkDistance / 5) % 2;
       return { vertical: person.facingY !== 0,
         row: person.facingY < 0 ? 2 + step : step, flip: person.facingX < 0 };
     }
@@ -1317,8 +1318,23 @@
     function updateResidentStep(dt) {
       for (const person of game.residents) {
         person.pause = Math.max(0, (person.pause || 0) - dt);
+        person.steerTime = Math.max(0, (person.steerTime || 0) - dt);
         person.moving = false;
         if (person.pause > 0) continue;
+        // At touching distance, yield rather than repeatedly choosing a new
+        // sidestep around the player. The wider release threshold avoids chatter.
+        const hx = game.hero.x - person.x, hy = game.hero.y - person.y;
+        const contact = (hx / 32) ** 2 + (hy / 22) ** 2;
+        const released = (hx / 40) ** 2 + (hy / 30) ** 2 > 1;
+        if (contact < 1 && !person.yielding) {
+          person.yielding = true;
+          faceResident(person, hx, hy);
+        }
+        if (person.yielding) {
+          if (!released) continue;
+          person.yielding = false;
+          person.steerTime = 0;
+        }
         const target = person.route[person.routeIndex];
         const dx = target[0] - person.x, dy = target[1] - person.y;
         const distance = Math.hypot(dx, dy);
@@ -1331,8 +1347,10 @@
         const heading = Math.atan2(dy, dx);
         // Look ahead and pass on the right. Head-on walkers choose opposite
         // physical sides; if every opening is blocked, wait instead of pushing.
-        for (const turn of [0, Math.PI / 4, -Math.PI / 4, Math.PI / 2, -Math.PI / 2]) {
-          const vx = Math.cos(heading + turn), vy = Math.sin(heading + turn);
+        const headings = [0, Math.PI / 4, -Math.PI / 4, Math.PI / 2, -Math.PI / 2].map(turn => heading + turn);
+        if (person.steerTime > 0) headings.unshift(person.steerHeading);
+        for (const direction of headings) {
+          const vx = Math.cos(direction), vy = Math.sin(direction);
           const look = Math.min(distance, amount + 8);
           if (blockedAt(person, person.x + vx * look, person.y + vy * look) ||
               blockedAt(person, person.x + vx * amount, person.y + vy * amount)) continue;
@@ -1340,6 +1358,10 @@
           person.y += vy * amount;
           person.walkDistance += amount;
           person.moving = true;
+          if (person.steerTime <= 0 || direction !== person.steerHeading) {
+            person.steerHeading = direction;
+            person.steerTime = 0.3;
+          }
           faceResident(person, vx, vy);
           break;
         }
@@ -1711,7 +1733,7 @@
         panel(30, 488, 300, 67, "#0b0b0ee8", "#d8a858");
       }
       titleStroke("TAP TO BEGIN", 180, 514, 18, "#fff2d0", "#12090a");
-      text("CHASE  •  GATHER  •  REPAIR  •  DEFEND", 180, 539, 8, "#e0c895", "center", true);
+      text("CHASE  •  GATHER  •  REPAIR  •  DEFEND", 180, 531, 8, "#e0c895", "center", true);
       text("PLAYABLE PROTOTYPE", 180, 610, 8, "#8f897e", "center", true);
     }
 
