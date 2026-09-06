@@ -646,3 +646,9 @@
 - Applied per-frame foot anchors so the chief, fisherman, merchant, townswoman, and service characters stay planted on one ground baseline as they turn or alternate walk steps.
 - Removed the full red ellipse from the opening bandit's marker; the directional arrow remains, so the target cue no longer reads as an exposed circle under the character.
 - Local phone-viewport verification confirmed the chief's body and shadow meet cleanly in the forward pose; the existing boundary/input regression suite remains green.
+
+### Player and rear-pose shadow correction
+
+- Added a ground shadow to the playable Yusuke sprite so the player no longer reads as hovering when the plaza texture is busy.
+- Re-anchored the vertical civilian rows using the main opaque foot mass rather than stray anti-aliased pixels at the bottom of the source cells; the chief's rear pose now meets its shadow instead of leaving a visible gap.
+- Rechecked the opening plaza at the phone viewport with both Yusuke and the official visible together.
