@@ -2293,9 +2293,12 @@
       if (!citizenWalkAtlas) return false;
       const sourceWidth = Math.floor(citizenWalkAtlas.width / 6);
       const sourceHeight = Math.floor(citizenWalkAtlas.height / 2);
+      // Each source frame has a different amount of transparent padding below
+      // the feet.  Keep the opaque foot line on the same world baseline so the
+      // walking animation does not hop above/below its ground shadow.
       const footRatios = [
-        [0.85, 0.87, 0.86, 0.87, 0.86, 0.87],
-        [0.91, 0.90, 0.90, 0.92, 0.91, 0.91]
+        [0.916, 0.916, 0.909, 0.916, 0.916, 0.916],
+        [0.849, 0.849, 0.840, 0.846, 0.849, 0.846]
       ];
       ctx.save();
       ctx.translate(x, 0);
@@ -2314,8 +2317,8 @@
       const sourceWidth = citizenPortraitAtlas.width / 3;
       const sourceHeight = citizenPortraitAtlas.height / 2;
       const footRatios = [
-        [0.84, 0.86, 0.86],
-        [0.88, 0.91, 0.91]
+        [0.840, 0.998, 0.998],
+        [0.797, 0.871, 0.875]
       ];
       ctx.drawImage(
         citizenPortraitAtlas,
@@ -2329,11 +2332,19 @@
       if (!citizenVerticalAtlas) return false;
       const sourceWidth = Math.floor(citizenVerticalAtlas.width / 6);
       const sourceHeight = Math.floor(citizenVerticalAtlas.height / 4);
-      const footRatios = [0.95, 0.95, 0.95, 0.94];
+      // Front rows are almost full-height; the second rear step has a much
+      // larger transparent tail.  These anchors are per cell, not one value
+      // for the entire sheet, which prevents the rear walk cycle from jumping.
+      const footRatios = [
+        [0.992, 0.992, 0.988, 0.996, 1.000, 1.000],
+        [0.965, 0.969, 0.969, 0.965, 0.977, 0.977],
+        [1.000, 0.883, 1.000, 0.871, 1.000, 1.000],
+        [0.793, 0.789, 0.789, 0.781, 0.777, 0.781]
+      ];
       ctx.drawImage(
         citizenVerticalAtlas,
         column * sourceWidth + 2, row * sourceHeight + 2, sourceWidth - 4, sourceHeight - 4,
-        x - size / 2, baseline - size * footRatios[row], size, size
+        x - size / 2, baseline - size * footRatios[row][column], size, size
       );
       return true;
     }
@@ -2404,9 +2415,6 @@
         drawBanditWalkCell(3, walkFrame, enemy.x, baseline, 66, enemy.state !== "escapeTown" && game.hero.x < enemy.x);
         ctx.save();
         ctx.translate(enemy.x, enemy.y - 7);
-        ctx.strokeStyle = enemy.flash > 0 ? "#fff5d7" : "#de574e";
-        ctx.lineWidth = 3;
-        ctx.beginPath(); ctx.ellipse(0, 13, 22, 8, 0, 0, Math.PI * 2); ctx.stroke();
         ctx.fillStyle = "#de574e";
         ctx.beginPath(); ctx.moveTo(0, -35); ctx.lineTo(-7, -47); ctx.lineTo(7, -47); ctx.closePath(); ctx.fill();
         ctx.restore();

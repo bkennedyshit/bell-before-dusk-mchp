@@ -639,3 +639,10 @@
 - Moved both service characters behind their authored counter positions, changed them to front-facing sprites, and limited the foreground redraw to the lower counter face so only their hidden lower bodies are occluded.
 - Enlarged the innkeeper to 82 pixels and the slimmer swordsmith to 86 pixels for comparable visual presence above their differently proportioned counters.
 - Verified both interiors directly at a phone viewport with a temporary local preview route, confirmed clean runtime logs, and removed the preview route before deployment.
+
+### Civilian shadow registration pass
+
+- Measured the actual opaque foot line in every sidewalk, portrait, and four-row vertical civilian frame instead of using one guessed offset for each sheet.
+- Applied per-frame foot anchors so the chief, fisherman, merchant, townswoman, and service characters stay planted on one ground baseline as they turn or alternate walk steps.
+- Removed the full red ellipse from the opening bandit's marker; the directional arrow remains, so the target cue no longer reads as an exposed circle under the character.
+- Local phone-viewport verification confirmed the chief's body and shadow meet cleanly in the forward pose; the existing boundary/input regression suite remains green.
