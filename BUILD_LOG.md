@@ -698,3 +698,8 @@
 - Routed sword knockback through collision-aware movement so attacks cannot push enemies into the wall. The north wall height and walkable area now share the same boundary definition.
 - The regression fails on the prior build at (120,150), then passes 32 edge/corner spawn and pursuit cases, trapped-position recovery, and real sword knockback. Existing input/gate and thief escape checks pass.
 - Visually reproduced two demons inside the gate, advanced the actual game simulation two seconds, and verified both moved onto the field toward Yusuke. Refreshed the offline ZIP for this correction.
+
+### Vercel Web Analytics
+
+- Added the static HTML analytics bootstrap for the production Vercel host. It queues the standard `window.va` calls and loads `/_vercel/insights/script.js` only when the game is running on a `.vercel.app` deployment, so the offline contest package makes no network request.
+- Redeployed production and verified the analytics route returns JavaScript successfully. A live visit registered in the Vercel dashboard as 1 visitor and 1 page view.
