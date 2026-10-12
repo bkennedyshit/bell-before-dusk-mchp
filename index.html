@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
   <meta name="theme-color" content="#171722">
   <title>Bell Before Dusk — Prototype</title>
+  <link rel="preload" as="image" href="assets/ui/title-town-dusk-v2.png" fetchpriority="high">
+  <link rel="preload" as="image" href="assets/ui/title-begin-frame-v1.png" fetchpriority="high">
+  <link rel="preload" as="image" href="assets/hero/samurai-courier-sprites-v2.png" fetchpriority="high">
   <style>
     :root { color-scheme: dark; }
     * { box-sizing: border-box; }
@@ -37,6 +40,7 @@
     const ctx = canvas.getContext("2d", { alpha: false });
     ctx.imageSmoothingEnabled = false;
     const heroSheet = new Image();
+    heroSheet.fetchPriority = "high";
     heroSheet.src = "assets/hero/samurai-courier-sprites-v2.png";
     const townPanorama = new Image();
     townPanorama.src = "assets/environment/post-town-open-v4.png";
@@ -92,8 +96,10 @@
     const touchControls = new Image();
     touchControls.src = "assets/ui/edo-touch-controls-v1.png";
     const titleBackdrop = new Image();
+    titleBackdrop.fetchPriority = "high";
     titleBackdrop.src = "assets/ui/title-town-dusk-v2.png";
     const titleButtonFrame = new Image();
+    titleButtonFrame.fetchPriority = "high";
     titleButtonFrame.src = "assets/ui/title-begin-frame-v1.png";
 
     const W = 360;
