@@ -13,3 +13,25 @@ Thumbs.db
 PHONE_TEST_URL.txt
 
 .vercel
+
+# Android generated assets/builds and machine-specific configuration.
+mobile/www/
+mobile/android/.gradle/
+mobile/android/.idea/
+mobile/android/**/build/
+mobile/android/local.properties
+mobile/android/.kotlin/
+*.jks
+*.keystore
+
+# Credentials, Apple signing material, and device-specific test captures.
+.env
+.env.*
+!.env.example
+*.p12
+*.p8
+*.mobileprovision
+art-review/android-*/
+art-review/campaign-playtest/
+mobile/ios/**/xcuserdata/
+mobile/ios/**/DerivedData/

@@ -1,5 +1,145 @@
 # Build Log
 
+## 2026-11-09 — source synchronization for Mac
+
+- Found Windows HEAD and GitHub main both at c53b174 (October 12); the expanded
+  campaign, Android wrapper and new assets were still uncommitted/untracked.
+- Collected the full 0.3.1 source, art/concept sources, wrapper, tests and docs for
+  a normal Git commit/push. Excluded generated builds/dependencies/caches, local
+  SDK paths, private signing material and device test saves/logs/captures.
+- Added staged-file/runtime completeness and common-secret-marker audit. All
+  runtime assets are ordinary Git blobs under 10 MiB each. Added cross-platform
+  text rules and executable Gradle wrapper metadata for the Mac/Linux checkout.
+- Fixed standalone campaign packaging to include story/features/billing modules
+  and the arena/new boss art. Added explicit BELL_HOST for wireless LAN testing;
+  localhost remains the server default. Git auto-deployment disabled in config.
+- Preserved existing gameplay. Baseline campaign, demon and completion checks
+  pass (68 checks). Mac's separate uncommitted iOS scaffold is not touched here;
+  merge instructions and the wireless browser command are in design/MAC-HANDOFF.md.
+
+## 2026-10-29 — exact 0.3.1 boss recheck and owner test itinerary
+
+- Matched installed APK SHA256 to the final delivered debug APK. On Normal, a
+  deliberate no-dodge floor fire test reduced HP 100 → 72; subsequent platform
+  dodges/recovery strikes defeated Cinder Maw at 72 HP with no respawns. Exit,
+  saved flags/stage clear, ward unlock and owner-save preservation passed; no
+  observed page errors. Evidence: art-review/android-demon-0.3.1-reverify/.
+- Added/passed explicit death/retry regression (9 demon checks total): full health,
+  invulnerability, correct arena checkpoint, captain remains defeated. No gameplay
+  changes or new APK required for this verification-only pass.
+- Wrote design/OWNER-TEST-0.3.1.md with full route, boss cues, touch/platform checks,
+  save/lifecycle tests and practical difficulty feedback. No Vercel deployment.
+
+## 2026-10-29 — 0.3.1 Cinder Maw and reported bug fixes
+
+- Corrected causeway story directions: crossing has no mandatory cargo marker.
+  Arena backing now covers the entire camera viewport below the room floor;
+  a real-browser pixel check verifies no outdoor backdrop leaks through.
+- Added original Cinder Maw after the human captain, retaining the six usable
+  shelves. Sustained floor fire requires a ledge; marked breath requires a height
+  change; the marked dive lands on real terrain and exposes a recovery window.
+  Separate captain/demon save flags, checkpoint retry, exit/ward gates, directions
+  and map locks agree. Existing completed endings remain completed.
+- Generated a twelve-pose left atlas and separate front neutral sprite with the
+  built-in image generator. User-requested right atlas is an exact deterministic
+  RGBA mirror in its own file. Fixed scale, registered source rectangles and foot
+  baselines avoid frame size pumping. All three files stage offline in Android.
+- Native testing caught and corrected the demon breath warning entering the old
+  captain target renderer. All attack rendering states are now regression tested.
+- Native isolated fight passed all three attacks, defeat, gate/exit and save/resume;
+  owner save unchanged, no page errors on the corrected fight. Test fixture starts
+  at the demon; this is not a complete fresh campaign playthrough of 0.3.1.
+- Built/installed 0.3.1-campaign (code 10) APK and built unsigned release AAB.
+  See design/TEST-REPORT-0.3.1.md and design/CINDER-MAW.md. No Vercel deployment.
+
+## 2026-10-29 — complete native campaign route audit
+
+- Completed the existing 0.3.0 debug campaign from an isolated fresh QA save:
+  all five platform routes, both bosses, both optional errands, earned weapon and
+  health upgrades, epilogue/credits, serialized victory and discovered-town travel.
+  Used instrumented state observation and keyboard/menu handlers on the actual
+  packaged Android WebView; no granted health, currency, keys, kills or scene jumps.
+- Emulator AppOps/system-server crashed once; resumed the earned QA save. Two
+  respawns occurred during unattended inspection gaps. This is not an uninterrupted
+  soak, touch-only human acceptance pass or physical-phone result.
+- Exact owner save unchanged; temporary hooks removed by app cold restart.
+  Evidence: art-review/android-route-2026-10-29/result.json and session.jsonl.
+- Logged misleading causeway cargo-marker instructions and outdoor scenery showing
+  below the captain room floor. Gameplay/source assets/APK were not changed by this
+  audit. Original demon boss for the circular-platform finale is a requested future
+  encounter, recorded in design/DEMON-BOSS-FOLLOWUP.md, not the existing captain.
+- Reran baseline campaign (50), completion (9), arena (5), journey (7), story (6),
+  billing gates and diff whitespace checks. Detailed route/limits in
+  design/PLAYTHROUGH-2026-10-29.md. No Vercel deployment or store upload.
+
+## 2026-10-27 — 0.3.0 final-design integration candidate
+
+- Used three requested sub-agents for story, journey systems and boss-room geometry, then integrated and verified the shared game. No Vercel deployment, publication, account changes or charges.
+- The original five platform stage ids remain. Bandit Storehouse now appends a 360px-wide arena after its 2172px approach: six shelves across three elevations, a room checkpoint, temporary encounter barrier and three warned captain attacks (rush, aimed knives, tier leap). Recovery occurs on real surfaces. Generated backdrop/collision floor are aligned; upper camera movement cannot reveal outdoor scenery above the room. Art prompt: `art-review/captain-arena-2026-10-27.md`.
+- Authored courier/thieves/seal/cargo story, progression-aware NPC lines and objectives, three intro cards, guardian epilogue and credits. Interrupted new intros/endings reopen; acknowledged cards stay acknowledged. Old saves keep schema1 and their progression.
+- JOURNAL → JOURNEY KIT provides three earned weapon profiles, two explicit optional errands, safe discovered-town travel after Willow, and Normal/Assist. Weapon reach/damage/recovery affect both combat modes; Assist reduces incoming damage and extends attack/hazard warnings without changing movement or jump geometry. Mild road-enemy health tiers distinguish Cedar, High Road and River March. Quest rewards/hand-ins are saved and non-duplicating; declining the smith errand still allows trading.
+- User selected free opening + one-time full-game unlock. Native BellBilling bridge queries a real Play product, verifies local RSA signatures, acknowledges non-consumables, restores ownership, rejects pending/unverified receipts and retains verified offline access. Real product/key/price and Play checkout remain unconfigured and untested. Client-only verification limitations and optional backend follow-up are explicit in `design/BILLING-SETUP.md`; no production-payment claim.
+- Separate staging: debug APK has `playtest:true`; unsigned release AAB has `playtest:false` and gates Cedar Hamlet/southern routes beyond the opening. Capacitor's public JS runtime is included offline for native plugin access. Release debugging remains disabled; no signing key was generated or committed. Identity remains `com.bellbeforedusk.playtest` pending owner approval.
+- Verification: 50 baseline campaign checks; 9 integrated completion checks; 7 journey checks; 6 narrative checks; 5 arena checks; billing-gate checks; original input/enemy-boundary/facing/crowd/78-pose anchor regressions; real-browser assets/UI/input/save checks. Android16 baseline smoke and completion smoke pass. Disposable native fixtures cover arena/jump, Journey Kit/weapon cards, fresh intro acknowledgement and native missing-key billing rejection; exact prior save restoration is asserted.
+- These checks are NOT a complete fresh-save native campaign run, physical-phone performance result, live purchase result or store approval. Final acceptance route and pending release gates are in `design/HUMAN-PLAYTEST.md`, `design/RELEASE-CHECKLIST.md`, and `design/STORE-LISTING-DRAFT.md`.
+
+## 2026-10-21 — 0.2.5 native input reproduction and physics-remainder fix
+
+- Controlled the actual Android emulator with the computer-use skill. In Post Town on 0.2.4, tap-to-walk repeatedly turned Yusuke but stopped after a few pixels; the render returned to idle. Identified a shared timing bug: `advanceFrame` ran full 1/60 substeps followed by an arbitrarily small remainder, and movement under .02 world pixels set `moving=false` and cleared the target before rendering. Ferry residents had a similar .01-pixel cutoff.
+- Added a regression for `1/60 + .00008` seconds in both home and road modes. It failed before the fix with `home: remainder must not switch the render to idle`. Physics now divides elapsed time into equal bounded substeps; moving flags use actual nonzero displacement rather than a per-step .02/.01 cutoff. Total elapsed time, collision sweep bounds and animation distance are preserved.
+- All 50 campaign regressions and real-browser tests pass. Built and installed Android 0.2.5-campaign (code 8) over the existing app, without clearing data. Used PC touch controls to continue the same save and repeat sustained travel and left/right turns in Post Town; single taps now traverse the plaza. Observed 74/100 HP, blade 3, 106 mon and four routes retained. Left the journal paused on 0.2.5. This is a targeted native input check, not a complete Android campaign playthrough or a guarantee that all authored pose differences are resolved.
+- Kept the original 0.2.4 APK for comparison. No Vercel deployment.
+
+## 2026-10-21 — 0.2.4 animation registration and Android package
+
+- Reviewed the supplied 3.09-second recording and source atlases. The run atlas contains opaque silhouettes 267–292 source pixels high, previously rendered at one atlas-cell scale; this produces visible height variation. All cardinal and diagonal running silhouettes now render 58 world pixels high, planted on one baseline. Top-down footfalls advance per eight world pixels travelled rather than global elapsed time.
+- Ferry residents now render at a stable 54-pixel silhouette height, anchored on the upper body instead of alternating feet, with a lighter 10-pixel shadow. Freeze the current step when stopping. Mirror the second rear pose and Mina's second front pose to correct authored basket/pole hand swaps. Original resident rendering and enemy rendering remain unchanged.
+- Browser regression checks assert constant height and baseline for 32 hero poses and 16 ferry poses and the intended prop-correcting flips. Visually reviewed hero/ferry contact sheets; all 49 campaign checks, real-browser checks, and 78 legacy ground-anchor checks pass. This does not replace a human motion review on Android.
+- Built Android debug APK 0.2.4-campaign, code 7, with all latest map and animation changes. No emulator/phone connected at verification; this revision is built but not device-playtested. Native save slot and application id unchanged. No Vercel deployment.
+
+## 2026-10-21 — Readable map plaque overlay (local web)
+
+- Replaced tiny translucent terrain labels with one reusable opaque parchment plaque, sized consistently with measured spacing and larger sans-serif text. Current/locked/completed states use the plaque accent; paths remain behind plaques. Regional geography and all route connections remain unchanged.
+- Rebuilt the next-lead card with a separate heading and left-aligned, width-measured word wrapping. Legend has its own footer, and close guidance has its own plaque. No generated labels baked into artwork.
+- All 49 campaign regressions and real-browser checks pass, including a new pairwise plaque-spacing assertion. Local web change only; no deployment or Android packaging.
+
+## 2026-10-21 — Northern Honshu regional map (local web revision)
+
+- Replaced the whole-archipelago background with a new generated northern-Honshu illustration. Fictional chapter routes occupy the upper/middle region; southern geography continues beyond this chapter without introducing fake playable destinations. Explicitly labelled not to scale.
+- Preserved all twelve locations, eleven connections, locks and saved progress. All 49 campaign checks and isolated real-browser checks pass; inspected the rendered map. Refreshed the user's local browser, continued the existing Willow Ferry save (120 HP, blade 2, 43 mon), and left the new map open and paused. Proof: `art-review/campaign-playtest/live-northern-region.png`.
+- Asset and exact built-in generation prompt: `art-review/northern-region-2026-10-21.md`. Previous artwork remains available. No Vercel deployment or new Android APK is claimed for this web-only revision.
+
+## 2026-10-21 — 0.2.3 actual-session refresh, Japan map and control hierarchy
+
+- Verified that the user's still-open local browser contained older code with neither `platformTap` nor `advanceFrame`, and the old four-route journal. Paused it rather than clearing its save. After the browser/server connection changed, restarted the local server, opened 0.2.3-local, verified the DOM build marker, continued the existing Willow save (120 HP, 43 mon, blade 2) and left the new map open. This is not a Vercel deployment.
+- Replaced the route flowchart with generated Japanese archipelago artwork and dynamic markers/connections: the seven-location north/south spine and five returning side trails. Fictional settlements are explicitly labelled as such. Added the real Harvest prerequisite and current-location ring.
+- Generated a restrained cloth/lacquer control atlas, removed gold pirate-style rims, softened paper to buff and near-black menu surfaces to medium sage. Touch controls now render once as the final gameplay layer, after every world plaque, but below modal menus.
+- Replaced opaque body ovals with lighter body shading and source-measured shoe contact patches in idle and running poses. Read-only registration metadata v2 includes boot contacts; sprites themselves are not edited. Reviewed a rendered contact sheet of four idle facings and all cardinal footfalls.
+- Losing focus, hiding or leaving the page saves and pauses; 60 seconds without input also pauses. Hidden pages skip simulation/render work. No player's health, boss balance or progress was reset to disguise failures.
+- 49 campaign regressions pass, including route graph, absence pause, idle pause and a thirty-simulated-minute bound on enemy/projectile/image collections. Browser checks pass real assets, all run frames, art contact, tap gestures and explicit label-before-touch render ordering. This is not a real-time mobile soak or a completed human playthrough.
+- Observed Windows near its committed-memory limit during earlier slowdown diagnosis, including a Python allocation failure; no unrelated process was stopped. This can contribute to slowdown but does not establish a game leak.
+- Android 0.2.3-campaign (code 6) is packaged separately. No device was connected at final verification, so no installation/native smoke result is claimed for this revision. Prior 0.2.2 emulator results do not count as a 0.2.3 device test.
+
+## 2026-10-21 — 0.2.2 UI, touch gestures and rendering polish
+
+- Generated a versioned washi/walnut/brass panel with the built-in image tool. Reworked journal, map, trail chooser, dialogue and shops around a quiet paper field with dark readable text and lacquer action buttons. The campaign HUD drops inactive prologue ward/fog counters and retains health, blade and resources. Prompt and asset provenance: `art-review/ui-polish-2026-10-21.md`.
+- Made all top-down plaques fade against the hero's body bounds, including Post Town labels rendered in the overlay. Route map side nodes now sit inside the decorative rim and locked Harvest shows its real prerequisite.
+- Running shadows stay beneath the torso instead of following a leading foot; side-facing idle shadows are wider. Expanded road bandits now have a consistent 50px silhouette and smaller 10px-radius shadows. Demons and boss tuning are unchanged.
+- Added platform terrain tap-to-walk, tap-character slash, double terrain tap short hop and triple terrain tap high jump. The 260ms distinction window is documented; joystick/JUMP remain immediate alternatives. Manual movement, pause, transitions and lost focus cancel destinations. Top-down character taps also slash; no top-down jump gesture is introduced.
+- Prepared 64 sprite silhouettes and mask spans offline as read-only metadata; runtime no longer flood-fills those entire atlases when the first pose appears. Low render FPS now advances elapsed simulation time in <=1/60s steps, with a 100ms long-stall cap, instead of slowing the game below 30 FPS.
+- 45 campaign checks and the browser suite pass, including real canvas double/triple taps, tap-character slash, all 64 run poses/grounding, bandit size, body-shadow stability, label alpha, and equal travel at 20/30/60/120 render FPS. Original input, boundaries, facing, measured legacy grounding and crowd regressions also pass.
+- Built/installed debug Android 0.2.2-campaign (code 5). Native smoke passed touch, portrait, Back, save/resume, actual gates/shops, offline reload and cold restart with no JS/native crashes; the prior player save was restored. Human playthrough and real-phone performance remain pending; `design/HUMAN-PLAYTEST.md` supplies a route/checklist for testers. No Vercel deployment or Play Store submission.
+
+## 2026-10-19 — 0.2.1 playtest navigation, footing and controls
+
+- Reproduced the post-opening wrong-town jump: restoring the old journey also restored its old location. The replay now restores gear/progression but ends safely at Post Town with full health.
+- Re-registered all four original Spirit Path terrain tiles. Rendering and collision now share source-pixel contact profiles, including actual stair treads and gaps; both original opening and campaign replay use the same profiles. Original-path walking uses the measured running atlas.
+- Removed the stale SOUTH ROAD CLOSED demo barricade during the expanded campaign. Existing route locks and boss difficulty are unchanged.
+- Added persistent locked-route explanations, state-aware Official/Aya/Nao directions, GUIDE labels, and a journal directions/control action. Warehouse-key directions distinguish the High Road west gate from River March's permanently closed extensions.
+- Normalized physical key codes and legacy Space names; W/Up also jump, with the same hold/release logic as Space and touch. Emulator ADB key events were observed reaching the WebView; its hardware keyboard is enabled.
+- Android minSdk remains 24 (Android 7). No physical low-end device performance claim is made. No Vercel deployment, billing or store publication.
+- Verified 40 campaign regressions, the original input/enemy/facing/78-pose/crowd suites, and a real Chromium pass including source-alpha terrain contact and actual Space hold/release. Built and installed 0.2.1-campaign (code 4); native emulator smoke passed touch, lifecycle/save, shop entry, Willow south exit, offline reload/restart and original opening preservation with no JS/native crashes. Existing player save restored by the smoke harness.
+
 ## 2026-09-05 — Stuck movement and haunted-field gate boundary
 
 - Reproduced stale tap/held input carrying across Spirit Path transitions: the previous code could move the returned hero from Y 208 to approximately Y 79. Scene transitions now clear travel targets, held keys, and touch-button state.
@@ -703,3 +843,151 @@
 
 - Added the static HTML analytics bootstrap for the production Vercel host. It queues the standard `window.va` calls and loads `/_vercel/insights/script.js` only when the game is running on a `.vercel.app` deployment, so the offline contest package makes no network request.
 - Redeployed production and verified the analytics route returns JavaScript successfully. A live visit registered in the Vercel dashboard as 1 visitor and 1 page view.
+
+### Campaign alpha — 2026-10-19
+
+- Added a separate readable campaign module while retaining the original
+  clapper chase, gathering, repairs and bell-defense prologue.
+- Connected Post Town to Cedar Road, Cedar Hamlet, the double-height Southern
+  High Road, Willow Ferry and the final ward clearing. The southern east branch
+  is open; the west branch requires the warehouse key; the south gate reaches
+  Willow Ferry.
+- Integrated four additional platform stages from the generated environment
+  panels: Cedar Canopy, Flooded Causeway, Harvest Levee and Bandit Storehouse.
+  These use registered art strips, multiple landing bands, downward collision,
+  upward passage, down+jump drop-through, checkpoints and retreat.
+- Added six named NPCs using the existing grounded citizen animation atlases:
+  Aya, Gen, Takeshi, Nao, Mika and Riku. Services include quest guidance, free
+  healing, a permanent blade upgrade and a maximum-health travel kit. Reused
+  portraits and patrol poses are deliberate first-pass art, not new sprites.
+- The captain uses guarded rush/projectile attacks and exposed recovery.
+  The top-down guardian uses telegraphed charges, marked strikes and radial
+  projectiles, with a recovery window and persistent victory state. Both reuse
+  existing enemy artwork.
+- Added versioned local saves, title continuation, explicit new-game replacement,
+  journal pause/retreat/save-and-title, and safe checkpoint restoration. Upper
+  route tokens persist across reloads. Browser storage failures remain playable.
+- Added an isolated road-chapter entry at ?chapter=roads for reviewing the new
+  campaign without replaying the prologue or changing the normal save slot.
+- Copied only selected environment panels to assets/environment/campaign and
+  excluded unused concept artwork from Vercel packaging. The build tool copies
+  33 runtime assets, about 64.8 MB, with no third-party runtime dependency.
+- Verification: 17 deterministic campaign checks cover reachability, gates,
+  services, one-way physics, upper tokens, both bosses, full route progression,
+  saving, pause and storage failure. Existing input, demon-boundary, thief-facing,
+  shadow-registration and crowd suites pass. Headless Chromium loaded all eight
+  expansion scenes with no missing assets or runtime errors and checked portrait
+  fit, actions, touch journal, save reload and the isolated chapter entry.
+- Browser screenshots live in art-review/campaign-playtest. Human phone
+  playthroughs, combat balance, Android packaging/lifecycle, Play Billing and
+  Play Store release/testing remain outside this campaign-alpha build.
+
+### Campaign playtest corrections — 2026-10-19
+
+- Removed automatic X-only platform exits. RETURN/EXIT now require grounded lower-lane proximity and E or a dedicated touch target; upper floors cannot unexpectedly eject the player.
+- Lowered causeway upper landing/art bands from 285 to 350 world pixels. Its 110-pixel rise is reachable with the existing approximately 115-pixel jump. Trimmed deck strips to remove disconnected reeds/support fragments.
+- Added authored solid rectangles for gate thresholds, the field shrine and ferry boat. Locked routes cannot be walked beyond; route interactions remain reachable. Journal retreat no longer bypasses progression by teleporting an unexplored road directly to Willow Ferry.
+- Restored ordinary bandits alongside demons on campaign roads. Enemy facing uses actual displacement. Added generated eight-direction raider/prowler art, four-frame cardinal hero running art, and Nao/Mika sprite variants. Existing prologue and boss art are retained.
+- Added visible inn/forge/market markers, fading route/shop plaques at close range, persistent dismissible conversations, and explicit price/confirmation screens for permanent upgrades. Steel costs 6 earned mon; travel kit costs 4; inns heal free. No real-money billing or currency purchases have been added.
+- Generated a raster journal/dialogue/shop frame with code-rendered text and fixed nine-slice borders. Prompts and selected production paths are recorded in art-review/playtest-fix-art-prompts.md.
+- Verification: 23 deterministic campaign checks (including recovery of old saves inside newly solid scenery) plus input, enemy-boundary, bandit-facing, 78-pose shadow registration and eight crowd regressions. Browser checks cover eight scenes, new art, running, touch purchase confirmation, persistent conversation, portrait journal, reload saves and isolated chapter-preview saves. Human full-route/phone and balance testing remains necessary.
+
+### First Android APK and automated device checks — 2026-10-19
+
+- Added an isolated Capacitor 8.5.3 Android project under mobile/, test package
+  com.bellbeforedusk.playtest, version 0.1.0-playtest (code 1). The existing Vercel
+  demo and archived ZIPs were neither deployed nor replaced. mobile/ is excluded
+  from Vercel packaging; generated assets, build output and local SDK paths are
+  ignored by Git. No Google Play account, publishing or payments were used.
+- Reused the existing game and selected 37 runtime assets as bundled offline
+  content. Added reproducible staging and PowerShell build/install commands.
+  Build uses Android Studio's JDK 21, SDK/target 36 and the generated Gradle wrapper.
+- Added portrait/immersive display, Back-to-journal while playing, native pause
+  forwarding for immediate saves/input cancellation/game pause/audio suspension.
+  Resume waits at the journal until the player deliberately continues. WebView
+  DevTools are enabled by the Android debuggable flag only; release config stays off.
+- Built and installed the debug-signed APK on the existing Medium Phone Android
+  16 emulator. Used ADB with Playwright's Android WebView adapter (desktop CDP
+  context-management assumptions do not apply to Android WebViews). Automated
+  touch start, Back, native jump, background/resume, save persistence, expansion
+  asset loading, airplane-mode reload and offline process-restart checks passed.
+  No JS errors, recent native fatal exceptions or external game/analytics requests
+  were recorded in that smoke run. Test preview saves and network state are restored.
+- APK: dist/android/bell-before-dusk-0.1.0-playtest-debug.apk, 80,096,615 bytes.
+  Android apksigner verification passed. Reports/screenshots live under
+  art-review/android-playtest. Campaign checks now include two native lifecycle
+  regressions (25 total); this does not replace a complete phone playthrough.
+- No physical phone is connected/tested yet. Final launcher assets, performance
+  tuning, release identity/signing, Play Billing/restore, store forms and Google
+  testing/approval remain release work. CLI-only iOS tooling has a moderate
+  uuid/xcode advisory; production npm dependency audit reports zero vulnerabilities.
+
+### Android entry-point and retry correction — 2026-10-19
+
+- User playtesting exposed a gap in the initial Android smoke test: it selected
+  the expansion through ?chapter=roads but normal launcher startup used / and
+  therefore entered the legacy prologue, including its collection/demo gates.
+  The first APK did contain the expansion, but its default entry was wrong.
+- Android staging now adds an edition/version marker before campaign startup.
+  Version 0.1.1-campaign (Android code 2) defaults to the expanded chapter and
+  uses its own persistent Android campaign save slot. Old prologue/browser/demo
+  saves are not erased or silently resumed. Root HTML/Vercel entry is unchanged.
+- Fixed defeat retry resuming a one-HP autosave beside enemies. Prologue retries
+  restart safely with full health; campaign retries recover at a safe entry with
+  full health and temporary protection while retaining campaign progress.
+- Stabilized run sprites on the torso instead of the alternating lead foot, and
+  placed their contact shadow beneath measured soles. Browser audit checks all
+  16 run frames/facings for sole height and shadow contact within 0.01 world pixel.
+- Added default Android startup and retry regressions (28 campaign checks).
+  Rebuilt, installed and verified version 0.1.1 on the visible Android emulator.
+  The Android smoke test now uses the ordinary launcher URL without a chapter
+  query, asserts the correct edition and prologue-completed campaign state, and
+  physically moves through Post Town's SOUTH exit using native joystick/tap input
+  before running its offline/background/restart checks. The run passed.
+- Corrected APK: dist/android/bell-before-dusk-0.1.1-campaign-debug.apk.
+  Previous APK/ZIPs remain preserved; no Vercel or Play deployment was made.
+
+### Road structure, sprite and platform integration pass — 2026-10-19
+
+- User playtesting identified real sprite-grid bleed and inconsistent map/level
+  integration. Run rendering now finds whole connected silhouettes rather than
+  clipping an assumed generated grid; neighboring shoes cannot contaminate a
+  different row's head/foot registration. Added diagonal hero run art and a
+  four-footfall/eight-facing atlas preserving the original red bandit's identity.
+  The ghost remains in campaign road encounters alongside bandits and demons.
+- Whole platform panels now share one transform with their contact bands.
+  Collision spans are refined from the actual image alpha beneath each landing
+  band; disconnected decoration and transparent gaps do not become invisible
+  floors. Background tiles fill the whole viewport and the camera follows upper
+  jumps. Existing saves' unsupported checkpoints are moved to a nearby supported
+  ground span. Tap/hold jump heights differ, including the original chase path.
+  EXIT/RETURN are touch buttons without desktop-only [E] labels.
+- Restored original Forest Spirit Path terrain as a selectable campaign route
+  alongside Cedar Canopy at the northern shrine. PLAY ORIGINAL OPENING replays
+  the official/thief/chase introduction without overwriting the active journey;
+  returning after the original chase reconnects to the expanded campaign.
+- Additional-town shops now stamp Post Town's actual inn/forge facades at
+  reachable upper-street doorways and enter reused interior images with original
+  host sprites. Gen/Takeshi/Mika/Riku serve indoors; street residents give local
+  directions. Post Town's original inn/forge service interactions are retained.
+- Willow south now enters River March, an exploration field with four marked
+  access points. Harvest Levee is a west side trail and returns to that field.
+  River March currently reuses the approved rice-road art; its east/coast roads
+  are explicitly closed chapter boundaries. No additional town is claimed.
+- Added a touch route map (not fast travel) showing towns, fields, optional trails,
+  the captain, guardian, current location and progression locks. Objectives now
+  give ordered route directions. Road enemies have more health/pursuit pressure;
+  ghosts telegraph ranged shots. This is tuning, not a claim of final balance.
+- Added nine integration regressions (37 campaign checks total), covering original
+  opening/path retention, shop interiors/save return, short/held jumps, ledge
+  falls, original shops, ghosts, field structure and touch map pause. Browser
+  checks include all ten expansion scenes plus interiors/map, 64 hero/bandit
+  rendered run poses, missing assets, save reload and touch purchase confirmation.
+  Original input, enemy-boundary, thief-facing, 78-pose anchor and crowd suites pass.
+- Android 0.2.0-campaign (code 3) is staged with 39 selected assets. Native smoke
+  testing verifies default launch, save/resume, offline restart, the actual Willow
+  south exit into River March, the actual forge doorway/interior and the original
+  thief opening while preserving the prior journey save. No release or deployment.
+- Prompts/asset paths are recorded in art-review/road-revision-art-prompts.md.
+  Story/title ideas are a proposal only in design/STORY-DIRECTION-DRAFT.md;
+  neither the app title nor the entire narrative has been silently rewritten.

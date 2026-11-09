@@ -4,7 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
   <meta name="theme-color" content="#171722">
-  <title>Bell Before Dusk — Prototype</title>
+  <meta name="bell-build" content="0.3.1-local">
+  <title>Bell Before Dusk</title>
   <link rel="preload" as="image" href="assets/ui/title-town-dusk-v2.png" fetchpriority="high">
   <link rel="preload" as="image" href="assets/ui/title-begin-frame-v1.png" fetchpriority="high">
   <link rel="preload" as="image" href="assets/hero/samurai-courier-sprites-v2.png" fetchpriority="high">
@@ -30,8 +31,13 @@
   </style>
 </head>
 <body>
-  <div id="frame"><canvas id="game" width="360" height="640" aria-label="Bell Before Dusk game"></canvas></div>
+  <div id="frame"><canvas id="game" width="360" height="640" tabindex="0" aria-label="Bell Before Dusk game"></canvas></div>
   <div id="rotate">Bell Before Dusk is designed for portrait orientation.</div>
+  <script src="campaign-billing.js"></script>
+  <script src="campaign-features.js"></script>
+  <script src="campaign-story.js"></script>
+  <script src="campaign.js"></script>
+  <script src="assets/characters/sprite-registration-v2.js"></script>
   <script>
   (() => {
     "use strict";
@@ -42,6 +48,22 @@
     const heroSheet = new Image();
     heroSheet.fetchPriority = "high";
     heroSheet.src = "assets/hero/samurai-courier-sprites-v2.png";
+    const heroRunSheet = new Image();
+    heroRunSheet.src = "assets/hero/courier-run-v3.png";
+    const heroDiagonalSheet = new Image();
+    heroDiagonalSheet.src = "assets/hero/courier-diagonal-run-v1.png";
+    const roadDemonSheet = new Image();
+    roadDemonSheet.src = "assets/characters/road-demons-eight-directions-v1.png";
+    const roadBanditSheet = new Image();
+    roadBanditSheet.src = "assets/characters/red-bandit-eight-directions-v1.png";
+    const journalFrame = new Image();
+    journalFrame.src = "assets/journal-frame-v1.png";
+    const washiPanel = new Image();
+    washiPanel.src = "assets/ui/washi-panel-v1.png";
+    const ferryCitizenSheet = new Image();
+    ferryCitizenSheet.src = "assets/characters/ferry-citizens-v2.png";
+    const registeredCells = new WeakMap();
+    const runComponentCache = new WeakMap();
     const townPanorama = new Image();
     townPanorama.src = "assets/environment/post-town-open-v4.png";
     const spiritPathBackdrop = new Image();
@@ -94,7 +116,9 @@
     const uiSkin = new Image();
     uiSkin.src = "assets/ui/edo-ui-skin-v1.png";
     const touchControls = new Image();
-    touchControls.src = "assets/ui/edo-touch-controls-v1.png";
+    touchControls.src = "assets/ui/edo-cloth-controls-v2.png";
+    const japanMap = new Image();
+    japanMap.src = "assets/ui/northern-honshu-region-v1.png";
     const titleBackdrop = new Image();
     titleBackdrop.fetchPriority = "high";
     titleBackdrop.src = "assets/ui/title-town-dusk-v2.png";
@@ -120,7 +144,30 @@
       { start: 925, end: 1105, y0: 490, y1: 490, art: 0 },
       { start: 1135, end: 1310, y0: 450, y1: 450, art: 1 }
     ];
+    // Source-space contact lines, not the bottom of each padded atlas cell.
+    // The lanterns are decoration: only the stone treads support an actor.
+    const SPIRIT_TERRAIN = [
+      {sx:20,sw:510,sy:275,sh:280,scale:164/280,contact:[[0,314],[510,314]]},
+      {sx:560,sw:510,sy:270,sh:285,scale:174/285,contact:[[0,297],[510,297]]},
+      {sx:1095,sw:505,sy:270,sh:285,contact:[[0,459],[100,425],[200,387],[300,355],[400,320],[475,298],[505,298]]},
+      {sx:1620,sw:540,sy:170,sh:390,steps:true,contact:[[0,466],[80,454],[90,443],[120,433],[140,419],[160,415],[180,405],[200,395],[220,389],[240,379],[260,370],[280,363],[300,355],[320,342],[340,334],[360,328],[380,317],[400,306],[420,302],[440,289],[450,287],[540,287]]}
+    ];
+    function spiritTerrainScale(segment) {
+      const spec=SPIRIT_TERRAIN[segment.art],line=spec.contact;
+      return spec.scale??(segment.y1-segment.y0)/(line.at(-1)[1]-line[0][1]);
+    }
+    function spiritSurfaceY(segment,x) {
+      const spec=SPIRIT_TERRAIN[segment.art],line=spec.contact;
+      const sourceX=clamp((x-segment.start)/(segment.end-segment.start),0,1)*spec.sw;
+      let y=line.at(-1)[1];
+      for(let i=1;i<line.length;i++)if(sourceX<line[i][0]){
+        const a=line[i-1],b=line[i];
+        y=spec.steps?a[1]:a[1]+(b[1]-a[1])*(sourceX-a[0])/(b[0]-a[0]);break;
+      }
+      return segment.y0+(y-line[0][1])*spiritTerrainScale(segment);
+    }
     const keys = new Set();
+    let gesture=null,gestureActor=null,idleSeconds=0;
     const stick = { active: false, id: null, x: 57, y: 582, dx: 0, dy: 0, r: 36 };
     const actionButton = { x: 304, y: 580, r: 37, down: false, id: null };
     const contextButton = { x: 300, y: 506, r: 27, down: false, id: null };
@@ -377,6 +424,7 @@
       if (game.scene === "title") return "town";
       if (game.phase === "breach") return "breach";
       if (game.scene === "platform") return "chase";
+      if (campaign?.active) return campaign.safe ? "town" : game.mapId === "ward" ? "breach" : "field";
       if (game.mapId === "outside") return musicDangerHold > 0 ? "danger" : "field";
       return "town";
     }
@@ -449,11 +497,16 @@
     }
 
     canvas.addEventListener("pointerdown", event => {
+      idleSeconds=0;
       event.preventDefault();
       startAudio();
       canvas.setPointerCapture(event.pointerId);
       const p = pointerPos(event);
-      if (game.scene === "title" || game.scene === "outcome") { resetGame(); return; }
+      if (game.scene === "title" || game.scene === "outcome") {
+        if (campaign) campaign.startFromTitle(p); else resetGame();
+        return;
+      }
+      if (campaign?.pointer(p)) return;
       if (inCircle(p.x, p.y, musicButton)) { toggleMusic(); return; }
       if (game.scene === "repair") { chooseRepairAt(p.x, p.y); return; }
       if (game.scene === "shop") { chooseShopAt(p.x, p.y); return; }
@@ -466,7 +519,7 @@
           return;
         }
       }
-      if (p.x < 160 && p.y > 480) {
+      if (inCircle(p.x,p.y,{x:stick.x,y:stick.y,r:stick.r+24})) {
         if (stick.active) return;
         game.tapTarget = null;
         stick.active = true;
@@ -490,12 +543,48 @@
       } else if (game.scene === "topdown") {
         const zoom = (game.mapId === "inn" || game.mapId === "smith") ? 1 : CAMERA_ZOOM;
         const target = { x: p.x / zoom + cameraX, y: p.y / zoom + cameraY };
-        game.tapTarget = blockedAt(game.hero, target.x, target.y) ? null : target;
+        if(Math.abs(target.x-game.hero.x)<24&&target.y>game.hero.y-54&&target.y<game.hero.y+19){game.tapTarget=null;doAttack();}
+        else game.tapTarget = blockedAt(game.hero, target.x, target.y) ? null : target;
+      } else if(game.scene==="platform") {
+        if(event.isPrimary===false)return;
+        const actor=campaign?.platformActor||game.platform;
+        if(actor)platformTap(p,actor);
       }
     });
 
+    function platformTap(p,actor){
+      const camera=actor.camera||0,cameraY=actor.cameraY||0;
+      const baseline=actor.y+(campaign?.platformActor?0:18);
+      if(Math.abs(p.x+camera-actor.x)<23&&p.y+cameraY>baseline-62&&p.y+cameraY<baseline+10){
+        gesture=null;actor.tapX=null;doAttack();return;
+      }
+      actor.tapX=clamp(p.x+camera,20,(actor.width||SPIRIT_WORLD_W)-25);gestureActor=actor;
+      if(gesture&&gesture.actor===actor&&gesture.age<.26&&Math.hypot(p.x-gesture.x,p.y-gesture.y)<42){
+        gesture.count++;gesture.age=0;
+        if(gesture.count===3){actor.tapX=null;doJump("high");gesture=null;}
+      }else gesture={actor,x:p.x,y:p.y,count:1,age:0};
+    }
+    function updateGestures(dt){
+      if(!gesture)return;gesture.age+=dt;
+      if(gesture.age>=.26){
+        if(gesture.count===2){gesture.actor.tapX=null;doJump("short");}
+        gesture=null;
+      }
+    }
+    function platformInput(actor){
+      const input=movementInput();
+      if(Math.hypot(input.x,input.y)>.1){actor.tapX=null;if(gesture?.actor===actor)gesture=null;}
+      if(Number.isFinite(actor.tapX)){
+        const dx=actor.tapX-actor.x;
+        if(Math.abs(dx)<7){actor.tapX=null;actor.vx=0;}
+        else input.x=Math.sign(dx)*Math.min(1,Math.abs(dx)/20);
+      }
+      return input;
+    }
+
     canvas.addEventListener("pointermove", event => {
       if (!stick.active || stick.id !== event.pointerId) return;
+      idleSeconds=0;
       const p = pointerPos(event);
       updateStick(p.x, p.y);
     });
@@ -515,9 +604,27 @@
     canvas.addEventListener("pointercancel", stopHeroTravel);
     canvas.addEventListener("lostpointercapture", releasePointer);
     addEventListener("pointerup", releasePointer);
-    addEventListener("blur", stopHeroTravel);
+    function pauseForAbsence(){
+      stopHeroTravel();campaign?.saveSession();
+      if(campaign&&!campaign.paused&&["topdown","platform"].includes(game.scene))campaign.toggleMenu();
+      if(music)music.pause();
+    }
+    addEventListener("blur", pauseForAbsence);
+    addEventListener("pagehide",pauseForAbsence);
     document.addEventListener("visibilitychange", () => {
-      if (document.hidden) stopHeroTravel();
+      if (document.hidden) pauseForAbsence();
+    });
+    // The Android shell forwards lifecycle events; ordinary web builds never emit them.
+    addEventListener("bell:native-pause", () => {
+      stopHeroTravel();campaign?.saveSession();
+      if(campaign&&!campaign.paused&&["topdown","platform"].includes(game.scene))campaign.toggleMenu();
+      if(music)music.pause();
+      if(audio?.state==="running")audio.suspend().catch(()=>{});
+    });
+    addEventListener("bell:native-back", event => {
+      if(["topdown","platform"].includes(game.scene)){
+        event.preventDefault();stopHeroTravel();campaign?.toggleMenu();
+      }
     });
 
     function updateStick(x, y) {
@@ -529,16 +636,28 @@
       stick.dy = dy * scale / stick.r;
     }
 
-    addEventListener("keydown", event => {
-      keys.add(event.key.toLowerCase());
+    function gameKey(event) {
+      const codes={Space:" ",KeyW:"w",KeyA:"a",KeyS:"s",KeyD:"d",KeyJ:"j",KeyE:"e",KeyM:"m"};
+      const key=codes[event.code]||(event.key||"").toLowerCase();
+      return key==="spacebar"||key==="space"?" ":key;
+    }
+    function jumpHeld() { return actionButton.down||keys.has(" ")||keys.has("w")||keys.has("arrowup"); }
+    addEventListener("keydown", nativeEvent => {
+      idleSeconds=0;
+      const key=gameKey(nativeEvent);
+      const event={key,repeat:nativeEvent.repeat||keys.has(key),preventDefault:()=>nativeEvent.preventDefault()};
+      keys.add(key);
       if (["w", "a", "s", "d", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(event.key.toLowerCase())) game.tapTarget = null;
       if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(event.key.toLowerCase())) event.preventDefault();
       if (event.key === " " && !event.repeat) {
         startAudio();
-        if (game.scene === "title" || game.scene === "outcome") resetGame();
+        if (game.scene === "title" || game.scene === "outcome") {
+          if (campaign) campaign.startFromTitle({ x: 180, y: 510 }); else resetGame();
+        }
         else if (game.scene === "platform") doJump();
         else doAttack();
       }
+      if(game.scene==="platform"&&["w","arrowup"].includes(key)&&!event.repeat)doJump();
       if (event.key.toLowerCase() === "j" && !event.repeat) doAttack();
       if (event.key.toLowerCase() === "m" && !event.repeat) { startAudio(); toggleMusic(); }
       if (event.key.toLowerCase() === "e" && !event.repeat) {
@@ -548,8 +667,9 @@
       if (game.scene === "repair" && ["1", "2"].includes(event.key)) chooseRepair(Number(event.key) - 1);
       if (game.scene === "shop" && ["1", "2"].includes(event.key)) chooseShop(Number(event.key) - 1);
       if (game.scene === "shop" && event.key.toLowerCase() === "escape") closeShop();
+      if (event.key.toLowerCase() === "escape" && !event.repeat) campaign?.toggleMenu();
     });
-    addEventListener("keyup", event => keys.delete(event.key.toLowerCase()));
+    addEventListener("keyup", event => keys.delete(gameKey(event)));
 
     function movementInput() {
       let x = stick.dx;
@@ -571,18 +691,24 @@
     }
 
     function doAttack() {
+      if (campaign?.paused) return;
+      if (campaign?.active) { campaign.attack(); return; }
       if (game.scene === "platform") { platformSlash(); return; }
       if (game.scene !== "topdown") return;
       if (game.hasKatana) slash();
       else say("Talk to the official. He has your katana and several opinions.");
     }
 
-    function doJump() {
+    function doJump(kind) {
+      if (campaign?.paused) return;
+      if (campaign?.active) { campaign.jump(kind); return; }
       if (game.scene !== "platform") return;
-      platformJump();
+      platformJump(kind);
     }
 
     function contextAction() {
+      const campaignAction = campaign?.context();
+      if (campaignAction) return campaignAction;
       if (game.scene !== "topdown") return null;
       const hero = game.hero;
       if (game.mapId === "inn") {
@@ -616,6 +742,7 @@
     }
 
     function doInteract() {
+      if (campaign?.interact()) return;
       const action = contextAction();
       if (!action) { say("Nothing to use here.", 1.4); return; }
       if (action.type === "official") {
@@ -717,6 +844,8 @@
     }
 
     function stopHeroTravel() {
+      gesture=null;if(gestureActor){gestureActor.tapX=null;gestureActor=null;}
+      if(game.platform)game.platform.tapX=null;
       game.tapTarget = null;
       keys.clear();
       stick.active = false;
@@ -796,14 +925,15 @@
     function slash() {
       const hero = game.hero;
       if (hero.attackCooldown > 0) return;
-      const target = nearestEnemy(62);
+      const weapon=campaign?.weaponProfile;
+      const target = nearestEnemy(weapon?weapon.reach+6:62);
       if (target) {
         const distance = Math.hypot(target.x - hero.x, target.y - hero.y) || 1;
         hero.facingX = (target.x - hero.x) / distance;
         hero.facingY = (target.y - hero.y) / distance;
       }
-      hero.attackCooldown = 0.34;
-      hero.attackFx = 0.24;
+      hero.attackCooldown = weapon?.cooldown??.34;
+      hero.attackFx = Math.min(.24,hero.attackCooldown);
       sfx("slash");
       let struck = false;
       for (const enemy of game.enemies) {
@@ -813,8 +943,8 @@
         const dy = enemy.y - hero.y;
         const distance = Math.hypot(dx, dy);
         const facing = (dx * hero.facingX + dy * hero.facingY) / (distance || 1);
-        if (distance < 56 && facing > -0.15) {
-          enemy.hp -= hero.damage;
+        if (distance < (weapon?.reach??56) && facing > -0.15) {
+          enemy.hp -= hero.damage*(weapon?.damage??1);
           moveActor(enemy, hero.facingX * 18, hero.facingY * 18);
           enemy.flash = 0.13;
           struck = true;
@@ -992,11 +1122,13 @@
       say("Back in Post Town. The field is now open as a demon-resource run; the far stone gate stays sealed for the demo.", 5);
     }
 
-    function platformJump() {
+    function platformJump(kind) {
       const p = game.platform;
       if (!p) return;
       if (p.grounded) {
         p.vy = -330;
+        p.jumpAge = 0;
+        p.gestureJump=kind;
         if (Math.abs(p.vx) < 70) p.vx = (p.facing || 1) * 92;
         p.grounded = false;
         sfx("jump");
@@ -1161,6 +1293,7 @@
       game.outcome = result;
       game.defeatCause = result === "defeat" ? cause : "";
       game.scene = "outcome";
+      campaign?.prologueOutcome(result);
       if (result === "victory") {
         game.score += Math.round(game.hero.hp * 4 + bell.integrity * 3 + bell.resonance * 5);
         sfx("win");
@@ -1183,7 +1316,10 @@
       objectiveTime = Math.max(0, objectiveTime - dt);
       screenShake = Math.max(0, screenShake - dt * 20);
       updateParticles(dt);
-      if (game.scene === "topdown") updateTopdown(dt);
+      campaign?.tick(dt);
+      if (campaign?.paused) { updateMusic(dt); return; }
+      if (campaign?.active) campaign.update(dt);
+      else if (game.scene === "topdown") updateTopdown(dt);
       else if (game.scene === "platform") updatePlatform(dt);
       updateMusic(dt);
     }
@@ -1340,7 +1476,9 @@
         const beforeX = hero.x;
         const beforeY = hero.y;
         moveActor(hero, input.x * hero.speed * dt, input.y * hero.speed * dt);
-        hero.moving = Math.hypot(hero.x - beforeX, hero.y - beforeY) >= 0.02;
+        const travelled=Math.hypot(hero.x-beforeX,hero.y-beforeY);
+        hero.moving = travelled > 0.000001;
+        hero.walkDistance=(hero.walkDistance||0)+travelled;
         if (game.tapTarget && !hero.moving) {
           game.tapTarget = null;
           hero.moving = false;
@@ -1512,7 +1650,7 @@
           game.fogPainClock -= dt;
           if (game.fogPainClock <= 0) {
             game.fogPainClock = 0.9;
-            hero.hp -= 7;
+            hero.hp -= campaign?.damageTaken(7)??7;
             screenShake = 5;
             sfx("hurt");
             say("LOST AIR — this fog front is draining health. Follow the lantern road south!", 3.6);
@@ -1611,7 +1749,7 @@
       if (enemy.state === "telegraph") {
         if (enemy.stateClock <= 0) {
           if (!targetsBell && distance < enemy.r + hero.r + 18 && hero.invulnerable <= 0) {
-            hero.hp -= enemy.damage;
+            hero.hp -= campaign?.damageTaken(enemy.damage)??enemy.damage;
             hero.invulnerable = 0.9;
             moveActor(hero, -dx / distance * 22, -dy / distance * 22);
             screenShake = 6; sfx("hurt");
@@ -1644,7 +1782,12 @@
       const p = game.platform;
       if (!p) return;
       game.elapsed += dt;
-      const input = movementInput();
+      const input = platformInput(p);
+      if(!p.grounded&&p.vy<0){
+        p.jumpAge=(p.jumpAge||0)+dt;
+        const held=p.gestureJump==="high"?p.jumpAge<.6:p.gestureJump==="short"?false:jumpHeld();
+        if(!held&&p.jumpAge>.09&&p.vy<-140)p.vy=-140;
+      }
       if (Math.abs(input.x) > 0.05) p.facing = Math.sign(input.x);
       const targetVx = input.x * 170;
       const acceleration = p.grounded ? 1050 : 480;
@@ -1663,7 +1806,7 @@
       } else p.grounded = false;
 
       if (p.y > 610) {
-        game.hero.hp -= 8;
+        game.hero.hp -= campaign?.damageTaken(8)??8;
         p.x = p.checkpoint; p.y = (platformGroundAt(p.checkpoint) || 500) - 18; p.vy = 0;
         sfx("hurt");
         say("The ravine mist returns Yusuke to the last shrine marker.");
@@ -1705,7 +1848,7 @@
           goon.telegraph -= dt;
           if (goon.telegraph <= 0) {
             if (xDistance < 48 && sameLevel && game.hero.invulnerable <= 0) {
-              game.hero.hp -= 9;
+              game.hero.hp -= campaign?.damageTaken(9)??9;
               game.hero.invulnerable = 0.9;
               p.vy = -135;
               p.x += Math.sign(p.x - goon.x || 1) * 30;
@@ -1750,8 +1893,7 @@
     function platformGroundAt(x) {
       for (const segment of SPIRIT_SEGMENTS) {
         if (x < segment.start || x > segment.end) continue;
-        const progress = (x - segment.start) / Math.max(1, segment.end - segment.start);
-        return segment.y0 + (segment.y1 - segment.y0) * progress;
+        return spiritSurfaceY(segment,x);
       }
       return null;
     }
@@ -1761,7 +1903,8 @@
       const shakeY = screenShake ? (Math.random() - 0.5) * screenShake : 0;
       ctx.save();
       ctx.translate(shakeX, shakeY);
-      if (game.scene === "title") drawTitle();
+      if (campaign?.active) campaign.draw();
+      else if (game.scene === "title") drawTitle();
       else if (game.scene === "topdown") drawTopdown();
       else if (game.scene === "repair") drawRepair();
       else if (game.scene === "platform") drawPlatform();
@@ -1770,6 +1913,8 @@
       ctx.restore();
       if (messageTime > 0 && game.scene !== "title" && game.scene !== "outcome") drawMessage();
       if (game.scene !== "title" && game.scene !== "outcome") drawMusicToggle();
+      campaign?.drawOverlay();
+      if(["topdown","platform"].includes(game.scene)&&!campaign?.paused)drawControls(true);
     }
 
     function drawMusicToggle() {
@@ -1825,7 +1970,8 @@
       }
       titleStroke("TAP TO BEGIN", 180, 514, 18, "#fff2d0", "#12090a");
       text("CHASE  •  GATHER  •  REPAIR  •  DEFEND", 180, 531, 8, "#e0c895", "center", true);
-      text("PLAYABLE PROTOTYPE", 180, 610, 8, "#8f897e", "center", true);
+      text("A JOURNEY BEYOND THE WARD", 180, 610, 8, "#8f897e", "center", true);
+      campaign?.drawTitle();
     }
 
     function titleStroke(value, x, y, size, fill, stroke) {
@@ -1911,7 +2057,7 @@
           ctx.fillStyle = "#f0ce68";
           ctx.beginPath(); ctx.moveTo(spiritTrail.x, spiritTrail.y + 22); ctx.lineTo(spiritTrail.x - 8, spiritTrail.y + 10); ctx.lineTo(spiritTrail.x + 8, spiritTrail.y + 10); ctx.fill();
         }
-        drawDoorPlaque(sealedGate.x, sealedGate.y + 38, "SEALED • DEMO");
+        drawDoorPlaque(sealedGate.x, sealedGate.y + 38, campaign?.storyOpening?"NORTH ROAD — AFTER CHASE":"SEALED • DEMO");
         drawDoorPlaque(outsideGate.x, outsideGate.y + 30, "POST TOWN");
         return;
       }
@@ -1955,12 +2101,20 @@
 
     function drawDoorPlaque(x, y, label) {
       const width = Math.max(34, label.length * 6 + 10);
+      ctx.save();
+      if(game.scene==="topdown"&&game.hero){
+        const dx=Math.max(0,Math.abs(game.hero.x-x)-width/2-22);
+        const dy=Math.max(0,Math.abs((game.hero.y-18)-y)-44);
+        ctx.globalAlpha*=.16+.84*clamp(Math.max(dx,dy)/24,0,1);
+      }
       ctx.fillStyle = "#171722d9"; ctx.fillRect(x - width / 2, y - 9, width, 18);
       ctx.strokeStyle = "#c7a65d"; ctx.lineWidth = 1; ctx.strokeRect(x - width / 2, y - 9, width, 18);
       text(label, x, y, 8, "#f3dfb0", "center", true);
+      ctx.restore();
     }
 
     function drawSouthBoundary() {
+      if(game.phase==="campaign_home")return; // The expanded road is open; no demo barricade.
       ctx.fillStyle = "#55382e";
       ctx.fillRect(487, 1132, 8, 35); ctx.fillRect(585, 1132, 8, 35);
       ctx.fillStyle = "#b4483f"; ctx.fillRect(491, 1144, 98, 7);
@@ -2267,6 +2421,17 @@
     }
 
     function drawTownResident(person) {
+      if(person.variant!==undefined&&ferryCitizenSheet.complete&&ferryCitizenSheet.naturalWidth){
+        const horizontal=Math.abs(person.facingX||0)>Math.abs(person.facingY||0);
+        const direction=horizontal?(person.facingX<0?4:6):(person.facingY<0?2:0);
+        const step=Math.floor((person.walkDistance||0)/7)%2;
+        // These authored rear poses (and Mina's front poses) swap the carried
+        // prop between hands. Mirror the second step back into the same hand.
+        const flip=step===1&&(direction===2||(person.variant===1&&direction===0));
+        ctx.save();ctx.translate(person.x,0);if(flip)ctx.scale(-1,1);
+        const drawn=registeredSprite(ferryCitizenSheet,8,2,direction+step,person.variant,0,person.y+16,54,true);
+        ctx.restore();if(drawn)return;
+      }
       if (!citizenWalkAtlas) return;
         const baseline = person.y + 16;
         const pose = residentPose(person);
@@ -2300,8 +2465,13 @@
       if (hero.invulnerable > 0 && Math.floor(hero.invulnerable * 16) % 2) return;
       // Keep Yusuke planted with the same ground cue used by town actors.
       // Without this, the authored sprite reads as hovering over the plaza.
-      drawGroundShadow(hero.x, hero.y + 15, 14, 0.40);
       drawHeroUpgradeEffects(hero);
+      if(hero.moving&&hero.attackFx<=0&&heroRunSheet.complete&&heroRunSheet.naturalWidth){
+        const diagonal=Math.abs(hero.facingX)>.25&&Math.abs(hero.facingY)>.25;
+        const direction=diagonal?(hero.facingY>0?(hero.facingX<0?4:5):(hero.facingX<0?6:7)):
+          Math.abs(hero.facingX)>Math.abs(hero.facingY)?(hero.facingX<0?1:2):(hero.facingY>0?0:3);
+        if(drawHeroRun(direction,hero.x,hero.y+15,Math.floor((hero.walkDistance||0)/8)%4,true))return;
+      }
       if (heroSheet.complete && heroSheet.naturalWidth) {
         let column;
         if (Math.abs(hero.facingX) > Math.abs(hero.facingY)) column = hero.facingX < 0 ? 1 : 2;
@@ -2350,6 +2520,119 @@
       ctx.restore();
     }
 
+    // Measure opaque feet once per cell, keeping padding changes out of world coordinates.
+    function registeredSprite(sheet, columns, rows, column, row, x, baseline, height, contactShadow=false) {
+      if(!sheet.complete||!sheet.naturalWidth)return false;
+      if(sheet===heroRunSheet||sheet===heroDiagonalSheet||sheet===roadBanditSheet)return drawRunComponent(sheet,column,row,x,baseline,height,contactShadow,columns,rows);
+      let cells=registeredCells.get(sheet);
+      if(!cells){
+        cells=[];
+        const scan=document.createElement("canvas");scan.width=sheet.naturalWidth;scan.height=sheet.naturalHeight;
+        const paint=scan.getContext("2d",{willReadFrequently:true});paint.drawImage(sheet,0,0);
+        const data=paint.getImageData(0,0,scan.width,scan.height).data;
+        const cw=sheet.naturalWidth/columns,ch=sheet.naturalHeight/rows;
+        for(let r=0;r<rows;r++)for(let c=0;c<columns;c++){
+          const sx=Math.round(c*cw),sy=Math.round(r*ch),endX=Math.round((c+1)*cw),endY=Math.round((r+1)*ch);
+          let left=endX,right=sx,top=endY,bottom=sy;
+          for(let py=sy;py<endY;py++)for(let px=sx;px<endX;px++)if(data[(py*scan.width+px)*4+3]>100){
+            left=Math.min(left,px);right=Math.max(right,px);top=Math.min(top,py);bottom=Math.max(bottom,py);
+          }
+          let total=0,count=0;
+          for(let py=Math.max(top,bottom-10);py<=bottom;py++)for(let px=left;px<=right;px++)
+            if(data[(py*scan.width+px)*4+3]>100){total+=px;count++;}
+          let bodyTotal=0,bodyCount=0;
+          for(let py=Math.round(top+(bottom-top)*0.25);py<=top+(bottom-top)*0.5;py++)for(let px=left;px<=right;px++)
+            if(data[(py*scan.width+px)*4+3]>100){bodyTotal+=px;bodyCount++;}
+          cells.push({left,right,top,bottom,foot:count?total/count:(left+right)/2,
+            body:bodyCount?bodyTotal/bodyCount:(left+right)/2});
+        }
+        registeredCells.set(sheet,cells);
+      }
+      const cell=cells[row*columns+column];
+      const ferry=sheet===ferryCitizenSheet;
+      const scale=ferry?height/(cell.bottom-cell.top+1):height/(sheet.naturalHeight/rows*0.9);
+      // Anchor the running torso, not whichever foot happens to lead this frame.
+      // The contact patch follows the measured soles, cancelling the floating cue.
+      const anchor=ferry?cell.body:cell.foot;
+      if(contactShadow)drawGroundShadow(x,baseline,ferry?10:14,ferry?.2:.4);
+      ctx.drawImage(sheet,cell.left,cell.top,cell.right-cell.left+1,cell.bottom-cell.top+1,
+        x+(cell.left-anchor)*scale,baseline-(cell.bottom-cell.top+1)*scale,
+        (cell.right-cell.left+1)*scale,(cell.bottom-cell.top+1)*scale);
+      return true;
+    }
+    function drawRunComponent(sheet,column,row,x,baseline,height,contactShadow,columns=4,rows=4){
+      let heroRunComponents=runComponentCache.get(sheet);
+      const meta=window.BELL_SPRITE_CONTACTS?.[sheet.src.split('/').at(-1)];
+      if(!heroRunComponents&&meta&&meta.width===sheet.naturalWidth&&meta.height===sheet.naturalHeight){
+        heroRunComponents=meta.cells.map(cell=>cell?{...cell,tile:null}:null);
+        runComponentCache.set(sheet,heroRunComponents);
+      }
+      if(!heroRunComponents){
+        const scan=document.createElement("canvas");scan.width=sheet.naturalWidth;scan.height=sheet.naturalHeight;
+        const paint=scan.getContext("2d",{willReadFrequently:true});paint.drawImage(sheet,0,0);
+        const pixels=paint.getImageData(0,0,scan.width,scan.height),data=pixels.data;
+        const seen=new Uint8Array(scan.width*scan.height),queue=new Int32Array(seen.length),best=Array(columns*rows).fill(null);
+        // Full silhouettes cross the generated grid. Isolate each actual character
+        // so neighboring shoes cannot become debris above another pose's head.
+        for(let seed=0;seed<seen.length;seed++)if(!seen[seed]&&data[seed*4+3]>64){
+          let read=0,write=1;queue[0]=seed;seen[seed]=1;
+          let left=scan.width,right=0,top=scan.height,bottom=0,sumX=0,sumY=0;
+          while(read<write){
+            const p=queue[read++],px=p%scan.width,py=Math.floor(p/scan.width);
+            left=Math.min(left,px);right=Math.max(right,px);top=Math.min(top,py);bottom=Math.max(bottom,py);sumX+=px;sumY+=py;
+            for(const n of [px?p-1:-1,px<scan.width-1?p+1:-1,py?p-scan.width:-1,py<scan.height-1?p+scan.width:-1])
+              if(n>=0&&!seen[n]&&data[n*4+3]>64){seen[n]=1;queue[write++]=n;}
+          }
+          const c=Math.min(columns-1,Math.floor(sumX/write/(scan.width/columns))),r=Math.min(rows-1,Math.floor(sumY/write/(scan.height/rows))),slot=r*columns+c;
+          if(write>100&&(!best[slot]||write>best[slot].area))best[slot]={left,right,top,bottom,area:write,indices:queue.slice(0,write)};
+        }
+        heroRunComponents=best.map(cell=>{
+          if(!cell)return null;
+          const tile=document.createElement("canvas");tile.width=cell.right-cell.left+1;tile.height=cell.bottom-cell.top+1;
+          const p=tile.getContext("2d"),clean=p.createImageData(tile.width,tile.height);
+          let footSum=0,footCount=0,bodySum=0,bodyCount=0;
+          for(const index of cell.indices){const px=index%scan.width-cell.left,py=Math.floor(index/scan.width)-cell.top;
+            const target=(py*tile.width+px)*4;clean.data.set(data.subarray(index*4,index*4+4),target);
+            if(py>=tile.height-12){footSum+=px;footCount++;}
+            if(py>tile.height*.25&&py<tile.height*.5){bodySum+=px;bodyCount++;}
+          }
+          p.putImageData(clean,0,0);
+          return {tile,foot:footSum/(footCount||1),body:bodySum/(bodyCount||1)};
+        });
+        runComponentCache.set(sheet,heroRunComponents);
+      }
+      const cell=heroRunComponents[row*columns+column];if(!cell)return false;
+      if(!cell.tile){
+        const tile=document.createElement("canvas");tile.width=cell.width;tile.height=cell.height;
+        const paint=tile.getContext("2d");paint.save();paint.beginPath();
+        for(let i=0;i<cell.runs.length;i+=3)paint.rect(cell.runs[i+1],cell.runs[i],cell.runs[i+2],1);
+        paint.clip();paint.drawImage(sheet,cell.left,cell.top,cell.width,cell.height,0,0,cell.width,cell.height);paint.restore();cell.tile=tile;
+      }
+      const bandit=sheet===roadBanditSheet;
+      // Authored run cells differ in opaque height even within one direction.
+      // Normalize the silhouette, not the padded atlas box, to avoid size pops.
+      const scale=(bandit?50:height)/cell.tile.height,dx=x-cell.body*scale;
+      const contacts=(cell.contacts||[]).map(([fx,fy,r])=>({x:dx+fx*scale,y:baseline-(cell.tile.height-fy)*scale,r:Math.max(3,r*scale)}));
+      if(contactShadow)drawGroundShadow(x,baseline,bandit?10:14,bandit ? .28 : .15,bandit?null:contacts);
+      ctx.drawImage(cell.tile,0,0,cell.tile.width,cell.tile.height,dx,baseline-cell.tile.height*scale,cell.tile.width*scale,cell.tile.height*scale);
+      return true;
+    }
+    function drawHeroRun(direction,x,baseline,frame,contactShadow=false) {
+      const sheet=direction>=4?heroDiagonalSheet:heroRunSheet;
+      return registeredSprite(sheet,4,4,frame,direction%4,x,baseline,58,contactShadow);
+    }
+    function drawRoadDemon(enemy) {
+      if(!["prowler","raider"].includes(enemy.type))return false;
+      const angle=Math.atan2(enemy.facingY||0,enemy.facingX||0);
+      const octant=((Math.round(angle/(Math.PI/4))%8)+8)%8;
+      const column=[6,7,0,1,2,3,4,5][octant];
+      const row=(enemy.type==="prowler"?2:0)+Math.floor((enemy.animDistance||0)/9)%2;
+      if(!roadDemonSheet.complete||!roadDemonSheet.naturalWidth)return false;
+      drawGroundShadow(enemy.x,enemy.y+16,15);
+      ctx.save();if(enemy.flash>0)ctx.filter="brightness(2)";
+      const drawn=registeredSprite(roadDemonSheet,8,4,column,row,enemy.x,enemy.y+16,enemy.type==="prowler"?61:70);
+      ctx.restore();return drawn;
+    }
     function drawHeroUpgradeEffects(hero) {
       const foxSmokeActive = game.smokeCharm || ((game.phase === "run1" || game.phase === "run2") && game.runFogMod < 1);
       if (foxSmokeActive) {
@@ -2435,6 +2718,11 @@
         ? (column === 0 ? 30 : column === 3 ? -39 : 0)
         : 0;
       const drawX = anchor ? -size * anchor[0] : -size / 2 - verticalOpticalOffset * size / sourceWidth;
+      if(grounded){
+        const contacts=(window.BELL_POSE_FEET?.[row*4+column]||[]).map(([fx,fy,r])=>({
+          x:x+(flip?-1:1)*(drawX+fx*size/sourceWidth),y:drawY+fy*size/sourceHeight,r:Math.max(3,r*size/sourceWidth)}));
+        drawGroundShadow(x,baseline,12,.15,contacts);
+      }
       ctx.save();
       ctx.translate(x, 0);
       if (flip) ctx.scale(-1, 1);
@@ -2446,7 +2734,7 @@
       ctx.restore();
     }
 
-    function drawGroundShadow(x, baseline, radius, alpha = 0.34) {
+    function drawGroundShadow(x, baseline, radius, alpha = 0.34, contacts=null) {
       ctx.save();
       ctx.globalAlpha = alpha;
       ctx.fillStyle = "#080b10";
@@ -2454,6 +2742,14 @@
       // Put the contact patch under the soles so they occlude its upper half.
       ctx.ellipse(x, baseline - 1, radius, Math.max(3, radius * 0.24), 0, 0, Math.PI * 2);
       ctx.fill();
+      if(contacts?.length){
+        ctx.globalAlpha=.3;
+        for(const foot of contacts){
+          // Raised running feet do not stamp a second floating floor shadow.
+          if(baseline-foot.y>5)continue;
+          ctx.beginPath();ctx.ellipse(foot.x,foot.y,Math.min(7,foot.r),1.6,0,0,Math.PI*2);ctx.fill();
+        }
+      }
       ctx.restore();
     }
 
@@ -2590,13 +2886,17 @@
     function drawEnemy(enemy) {
       if (enemy.dead && enemy.flash < -0.12) return;
       if (enemy.type === "bandit") {
-        if (!citizenWalkAtlas || !citizenVerticalAtlas) return;
+        const expanded=campaign?.active&&roadBanditSheet.complete&&roadBanditSheet.naturalWidth;
+        if (!expanded&&(!citizenWalkAtlas || !citizenVerticalAtlas)) return;
         const baseline = enemy.y + 16;
         const walkFrame = Math.floor((enemy.animDistance || 0) / 9) % 2;
-        drawGroundShadow(enemy.x, baseline, 15);
+        if(!expanded)drawGroundShadow(enemy.x, baseline, 15);
         // The thief has full front/back/side art in the civilian atlases.
         // Face actual travel, never the player's position while fleeing.
-        if (enemy.facingY || !enemy.facingX) {
+        if(expanded){
+          const octant=((Math.round(Math.atan2(enemy.facingY||0,enemy.facingX||0)/(Math.PI/4))%8)+8)%8;
+          registeredSprite(roadBanditSheet,8,4,[6,7,0,1,2,3,4,5][octant],Math.floor((enemy.animDistance||0)/6)%4,enemy.x,baseline,61,true);
+        }else if (Math.abs(enemy.facingY||0)>=Math.abs(enemy.facingX||0)) {
           drawCitizenVerticalCell(3, enemy.facingY < 0 ? 2 + walkFrame : walkFrame, enemy.x, baseline, 66);
         } else {
           drawCitizenWalkCell(3, walkFrame, enemy.x, baseline, 66, enemy.facingX < 0);
@@ -2619,7 +2919,8 @@
       const pose = enemy.state === "telegraph" ? 2 : moving ? walkFrame : 0;
       const facingLeft = enemy.facingX ? enemy.facingX < 0 : game.hero.x < enemy.x;
       let generated = false;
-      if (enemy.type === "wisp") generated = drawYokaiCell(0, pose, enemy.x, enemy.y + 24, 96, facingLeft, enemy.flash > 0);
+      if (drawRoadDemon(enemy)) generated = true;
+      else if (enemy.type === "wisp") generated = drawYokaiCell(0, pose, enemy.x, enemy.y + 24, 96, facingLeft, enemy.flash > 0);
       else if (enemy.type === "prowler") generated = drawYokaiCell(1, pose, enemy.x, enemy.y + 27, 104, facingLeft, enemy.flash > 0);
       else if (enemy.type === "raider") generated = drawYokaiCell(2, pose, enemy.x, enemy.y + 27, 110, facingLeft, enemy.flash > 0);
       else if (enemy.type === "boss") generated = drawYokaiCell(3, pose, enemy.x, enemy.y + 34, 138, facingLeft, enemy.flash > 0);
@@ -2708,14 +3009,15 @@
     }
 
     function drawHud() {
-      drawOpenHudFrame();
-      const section = game.mapId === "inn" ? "CROOKED CARP" : game.mapId === "smith" ? "SPARROW FORGE" : ({
+      const section = campaign?.title || (game.mapId === "inn" ? "CROOKED CARP" : game.mapId === "smith" ? "SPARROW FORGE" : ({
         town_intro: "POST TOWN", town_escape: "TOWN CHASE", chase_gate: "NORTH GATE",
         town_gate: "NORTH GATE", town_gate2: "NORTH GATE",
         chase_field: "HAUNTED FIELD", post_chase_field: "HAUNTED FIELD",
         spirit_chase: "SPIRIT CHASE", spirit_replay: "SPIRIT PATH", run1: "HAUNTED FIELD",
         run2: "HAUNTED FIELD", breach: "BELL BREACH"
-      }[game.phase] || "BELL YARD");
+      }[game.phase] || "BELL YARD"));
+      if(campaign?.title&&!campaign.storyOpening){drawRoadHud(section);return;}
+      drawOpenHudFrame();
 
       ctx.fillStyle = "#080b10e8";
       ctx.fillRect(27, 12, 54, 13);
@@ -2755,7 +3057,7 @@
       text("MON", 318, 94, 7, "#b99b5e", "center", true);
       text(`${game.mon}`, 318, 107, 10, "#f1d27a", "center", true);
 
-      const safe = game.mapId === "inn" || game.mapId === "smith" ||
+      const safe = campaign?.safe || game.mapId === "inn" || game.mapId === "smith" ||
         (game.mapId === "town" && ["town_intro", "chase_gate", "town_gate", "town_gate2"].includes(game.phase));
       const runState = game.phase === "run1" || game.phase === "run2";
       const statusLabel = safe ? "SAFE" : runState && game.fogPhase === "clear" ? "CALM" : runState && game.fogPhase === "warning" ? "WIND" : runState ? "FOG" : "DANGER";
@@ -2776,6 +3078,23 @@
       } else if (game.phase === "breach") {
         drawBellMeter();
       }
+    }
+    function drawRoadHud(section){
+      menuButton(8,8,344,112);
+      ctx.save();ctx.beginPath();ctx.rect(17,16,66,68);ctx.clip();drawHeroCell(0,0,42,78,58);ctx.restore();
+      text("YUSUKE",47,21,7,"#e4c48a","center",true);
+      text("THE ROAD JOURNEY",215,24,8,"#b7a789","center");
+      fitText(section,215,45,15,"#f6e5be",234);
+      text("BLADE "+game.hero.damage,128,73,10,"#e4c48a","center",true);
+      text(campaign.safe?"SAFE HAVEN":"DANGER",235,73,9,campaign.safe?"#a8c7aa":"#e0a48a","center",true);
+      ctx.fillStyle="#46322f";ctx.fillRect(18,92,70,6);ctx.fillStyle="#c35b4f";
+      ctx.fillRect(18,92,70*clamp(game.hero.hp/game.hero.maxHp,0,1),6);
+      text(Math.ceil(game.hero.hp)+" / "+game.hero.maxHp,53,108,8,"#f4dfb4","center");
+      for(const [x,value] of [[132,"CEDAR "+game.cedar],[215,"ASH "+game.ash],[299,"MON "+game.mon]])
+        text(value,x,102,9,"#d6c499","center",true);
+      ctx.fillStyle="#151a17ed";ctx.fillRect(10,128,340,33);
+      ctx.fillStyle="#a15336";ctx.fillRect(10,128,3,33);
+      fitText(game.objective,184,144,9,"#f0e5ce",326);
     }
 
     function drawResourcePip(x, y, type) {
@@ -2879,7 +3198,8 @@
       text(`${Math.round(bell.resonance)}%`, 344, 181, 8, "#f0cc69", "right", true);
     }
 
-    function drawControls() {
+    function drawControls(topLayer=false) {
+      if(!topLayer)return; // World renderers cannot cover the final touch layer.
       const controlShade = ctx.createLinearGradient(0, 540, 0, 640);
       controlShade.addColorStop(0, "#17172200");
       controlShade.addColorStop(0.48, "#11131a70");
@@ -3078,7 +3398,8 @@
         if (p.grounded) {
           const ground = p.y + 18;
           drawGroundShadow(p.x, ground, 14, 0.46);
-          drawHeroCell(column, 3, p.x, ground, 72, (p.facing || 1) < 0);
+          if(!(p.slash<=0&&moving&&drawHeroRun((p.facing||1)<0?1:2,p.x,ground,Math.floor(game.elapsed*10)%4)))
+            drawHeroCell(column, 3, p.x, ground, 72, (p.facing || 1) < 0);
         } else {
           ctx.save();
           ctx.translate(p.x, p.y + 18);
@@ -3117,22 +3438,14 @@
     }
 
     function drawSpiritTerrainSegment(segment) {
-      const { start, end, y0, y1, art } = segment;
+      const { start, end, y0, art } = segment;
       const width = end - start;
       if (spiritTerrainSheet.complete && spiritTerrainSheet.naturalWidth) {
-        const cellWidth = spiritTerrainSheet.naturalWidth / 4;
-        const specs = [
-          { sy: 275, sh: 280, height: 164, contactOffset: 28 },
-          { sy: 270, sh: 285, height: 174, contactOffset: 31 },
-          { sy: 260, sh: 300, height: 190, contactOffset: 32 },
-          { sy: 170, sh: 390, height: 210, contactOffset: 70 }
-        ];
-        const spec = specs[art];
-        const highGround = Math.min(y0, y1);
+        const spec = SPIRIT_TERRAIN[art],scale=spiritTerrainScale(segment);
         ctx.drawImage(
           spiritTerrainSheet,
-          art * cellWidth, spec.sy, cellWidth, spec.sh,
-          start - 8, highGround - spec.contactOffset, width + 16, spec.height
+          spec.sx, spec.sy, spec.sw, spec.sh,
+          start, y0-(spec.contact[0][1]-spec.sy)*scale, width, spec.sh*scale
         );
         return;
       }
@@ -3210,14 +3523,7 @@
       ctx.save();
       ctx.globalAlpha = clamp(messageTime * 2, 0, 1);
       const { x, y, width, height, lines } = messageLayout();
-      ctx.fillStyle = "#070a10bd";
-      ctx.fillRect(x, y, width, height);
-      ctx.strokeStyle = "#bd9251c7";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(x, y + 0.5); ctx.lineTo(x + width, y + 0.5);
-      ctx.moveTo(x, y + height - 0.5); ctx.lineTo(x + width, y + height - 0.5);
-      ctx.stroke();
+      panel(x,y,width,height,"#070a10ed","#bd9251c7");
       ctx.fillStyle = "#873735"; ctx.fillRect(x + 10, y + 8, 3, height - 16);
       text("NOTICE", x + 20, y + 11, 7, "#e7c571", "left", true);
       ctx.font = "11px Georgia";
@@ -3228,12 +3534,43 @@
       ctx.restore();
     }
 
+    const paperCache=new Map();
+    function paperPanel(x,y,width,height){
+      if(!washiPanel.complete||!washiPanel.naturalWidth){
+        ctx.fillStyle="#eee1bd";ctx.fillRect(x,y,width,height);ctx.strokeStyle="#59412b";ctx.strokeRect(x,y,width,height);return;
+      }
+      const key=width+"x"+height;let tile=paperCache.get(key);
+      if(!tile){
+        tile=document.createElement("canvas");tile.width=width;tile.height=height;const paint=tile.getContext("2d");
+        const sw=washiPanel.naturalWidth,sh=washiPanel.naturalHeight,inset=Math.round(sw*.075),edge=11;
+        const sx=[0,inset,sw-inset,sw],sy=[0,inset,sh-inset,sh],dx=[0,edge,width-edge,width],dy=[0,edge,height-edge,height];
+        for(let r=0;r<3;r++)for(let c=0;c<3;c++)paint.drawImage(washiPanel,sx[c],sy[r],sx[c+1]-sx[c],sy[r+1]-sy[r],dx[c],dy[r],dx[c+1]-dx[c],dy[r+1]-dy[r]);
+        if(paperCache.size>20)paperCache.clear();paperCache.set(key,tile);
+      }
+      ctx.drawImage(tile,x,y,width,height);
+      ctx.fillStyle="#9a7c4240";ctx.fillRect(x+11,y+11,width-22,height-22);
+    }
+    function menuButton(x,y,width,height,primary=false){
+      paperPanel(x,y,width,height);
+      ctx.fillStyle=primary?"#6b754f":"#576858";ctx.fillRect(x+4,y+4,width-8,height-8);
+      ctx.fillStyle=primary?"#a44b34":"#68583c";ctx.fillRect(x+6,y+6,3,height-12);
+    }
     function panel(x, y, width, height, fill, stroke) {
+      ctx.save();
+      x=Math.round(x);y=Math.round(y);width=Math.round(width);height=Math.round(height);
+      if(width>=180&&height>=40&&journalFrame.complete&&journalFrame.naturalWidth){
+        const sw=journalFrame.naturalWidth,sh=journalFrame.naturalHeight,inset=82,edge=Math.min(14,height/4);
+        const sx=[0,inset,sw-inset,sw],sy=[0,inset,sh-inset,sh];
+        const dx=[x,x+edge,x+width-edge,x+width],dy=[y,y+edge,y+height-edge,y+height];
+        for(let r=0;r<3;r++)for(let c=0;c<3;c++)ctx.drawImage(journalFrame,sx[c],sy[r],sx[c+1]-sx[c],sy[r+1]-sy[r],dx[c],dy[r],dx[c+1]-dx[c],dy[r+1]-dy[r]);
+        ctx.restore();return;
+      }
       ctx.fillStyle = fill;
       ctx.fillRect(x, y, width, height);
       ctx.strokeStyle = stroke;
       ctx.lineWidth = 2;
       ctx.strokeRect(x + 1, y + 1, width - 2, height - 2);
+      ctx.restore();
     }
 
     function text(value, x, y, size, color, align = "left", bold = false) {
@@ -3301,13 +3638,40 @@
     }
 
     function frame(now) {
-      const dt = Math.min(0.033, (now - last) / 1000 || 0);
+      const dt = Math.min(0.1, Math.max(0,(now - last) / 1000 || 0));
       last = now;
-      update(dt);
+      if(document.hidden){requestAnimationFrame(frame);return;}
+      if(!campaign?.paused&&["topdown","platform"].includes(game.scene)){
+        if(Math.hypot(stick.dx,stick.dy)>.1||keys.size||actionButton.down)idleSeconds=0;
+        else idleSeconds+=dt;
+        if(idleSeconds>=60){pauseForAbsence();idleSeconds=0;say("Paused after a minute without input. Resume when ready.");}
+      }
+      advanceFrame(dt);
       draw();
       requestAnimationFrame(frame);
     }
+    function advanceFrame(dt){
+      const elapsed=Math.max(0,Math.min(.1,dt));
+      if(!elapsed)return;
+      // Equal substeps avoid a near-zero remainder overwriting moving/idle
+      // state immediately before rendering (and cancelling tap navigation).
+      const steps=Math.ceil(elapsed/(1/60)),step=elapsed/steps;
+      for(let i=0;i<steps;i++){updateGestures(step);update(step);}
+    }
 
+    const campaign = window.createBellCampaign ? window.createBellCampaign({
+      game, ctx, canvas, keys, stick, bell, W, H, CAMERA_ZOOM,
+      resetGame, stopHeroTravel, movementInput, platformInput, say, sfx, burst, setObjective,
+      drawHero, drawHeroCell, drawHeroRun, drawTownResident, drawPlatformBandit, drawEnemy,
+      spiritSegments:SPIRIT_SEGMENTS,spiritSurfaceY,drawSpiritTerrainSegment,
+      actionHeld:jumpHeld,
+      interiorWalkableAt,
+      drawGroundShadow, drawHud, drawControls, drawDoorPlaque, panel, paperPanel, menuButton, text, wrappedText,
+      getCamera: () => ({ x: cameraX, y: cameraY }),
+      setCamera: (x, y) => { cameraX = x; cameraY = y; },
+      clearMessage: () => { messageTime = 0; },
+      images: { field: outsideBackdrop, town: townPanorama, backdrop: spiritPathBackdrop, inn:innInterior,forge:forgeInterior,japanMap }
+    }) : null;
     requestAnimationFrame(frame);
   })();
   </script>

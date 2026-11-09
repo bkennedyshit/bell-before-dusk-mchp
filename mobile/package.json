@@ -1,0 +1,17 @@
+{
+  "name": "bell-before-dusk-android",
+  "version": "0.3.1",
+  "private": true,
+  "description": "Local Android playtest wrapper; not the public web demo or a billing-enabled release.",
+  "scripts": {
+    "stage": "node ../tools/stage-android-web.cjs",
+    "sync": "npm run stage && cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.3",
+    "@capacitor/core": "8.5.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.3"
+  }
+}

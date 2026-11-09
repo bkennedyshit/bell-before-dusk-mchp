@@ -10,6 +10,8 @@ design/
 dist/
 tests/
 art-review/
+tools/
+mobile/
 
 # Local alternate encodes; the runtime uses the universal MP3 cuts.
 assets/audio/*.webm
@@ -26,8 +28,10 @@ assets/environment/spirit-path-terrain-v2.png
 assets/environment/spirit-path-terrain-v5-clean.png
 
 # Superseded static character sheets replaced by grounded animation atlases.
-assets/characters/edo-citizens-v1.png
 assets/characters/town-npcs-v2.png
 assets/characters/town-npcs-study-v1.png
 assets/characters/town-services-v1.png
 assets/hero/samurai-courier-animation-study-v1.png
+
+# Expansion review files stay local; selected artwork lives in campaign/.
+assets/environment/concepts/

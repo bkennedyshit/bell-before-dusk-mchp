@@ -9,6 +9,7 @@ const measured = JSON.parse(execFileSync('py', [path.join(__dirname, 'measure-gr
 let source = fs.readFileSync(path.join(root, 'index.html'), 'utf8').match(/<script>([\s\S]*?)<\/script>/)[1];
 let state = {x:0, sx:1}, stack = [], draw;
 const ctx = {
+  beginPath(){},ellipse(){},fill(){},
   save(){stack.push({...state});}, restore(){state=stack.pop();},
   translate(x){state.x+=state.sx*x;}, scale(x){state.sx*=x;},
   drawImage(...args){draw={args,state:{...state}};}

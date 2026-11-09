@@ -1,0 +1,60 @@
+{
+  "generator": "built-in image_gen",
+  "status": "environment art and intended connections only; no gameplay wiring changed",
+  "southernMap": {
+    "asset": "southern-high-road-v3-combined.png",
+    "size": [
+      1024,
+      2976
+    ],
+    "exits": [
+      {
+        "direction": "north",
+        "destination": "Post Town",
+        "locked": false
+      },
+      {
+        "direction": "south",
+        "destination": "Willow Ferry",
+        "locked": false
+      },
+      {
+        "direction": "east",
+        "destination": "Flooded Causeway",
+        "locked": false
+      },
+      {
+        "direction": "west",
+        "destination": "Bandit Storehouse",
+        "locked": true,
+        "unlock": "Reserve for a later regional quest"
+      }
+    ]
+  },
+  "newPlatformAssets": [
+    {
+      "id": "flooded-causeway",
+      "size": [
+        4344,
+        724
+      ],
+      "panels": 2
+    },
+    {
+      "id": "demon-watch-arena",
+      "size": [
+        2172,
+        724
+      ],
+      "panels": 1
+    }
+  ],
+  "prompts": {
+    "southernTop": "Use case: precise-object-edit\nAsset: Southern High Road NORTHERN HALF, add OPEN east platformer branch.\nPreserve this map's exact terrain, scale, style, shelter, north exit, rice paddies and especially bottom256pixels unchanged for stitching.\nAt the right/east road exit around x900–1024,y665–805, add two small carved dark-timber posts, one on each bank of the actual eastbound dirt road. The posts mark an OPEN passage: no fence, chain, lock, gate panel or roof spanning the road. Road remains at least120pixels wide and continues visibly off right edge into another scene. Small amber lantern on one post; no writing or symbols. Place posts directly at the existing side exit, not elsewhere on grass. This is the open route to Flooded Causeway. Only this localized change. No new roads, bells, characters or UI. Output1024x1536 and match existing black outline and painted pixel-art textures.",
+    "southernBottom": "Use case: precise-object-edit\nEdit this exact lower-half Southern High Road game map. Preserve composition, scale, center road, paddies, farmhouse, palette, lighting, top256pixels for stitching, and 1024x1536 dimensions.\nMake exactly TWO changes:\n1) Bottom center road at x340–685,y1310–1500: replace the inconspicuous fence-post entrance with a clearly visible EARLY EDO TOWN GATE, a dark timber tiled-roof gate about330pixels wide, open double doors and a clear center walk-through gap. Roof around y1330 and road visible through doorway down to bottom edge. This is the south entrance to Willow Ferry. Match game's black outlines and architectural rendering. No text or symbols.\n2) Left/west road exit at x0–175,y880–1000: add a CLOSED timber barrier across the WEST exit, anchored between stone posts, with visible chain and lock. Its orientation fits a left-bound path; it blocks only that opening at the edge. This side branch is visibly unavailable. Keep central travel area open and all other art unchanged.\nNo other gates or bells, no characters, UI, labels or extra roads. Keep top edge identical for seamless joining to northern panel.",
+    "lockedExitCorrection": "Edit only the locked west barrier in this map. Preserve all other pixels/composition, especially top256pixels and bottom open town gate. The current closed barrier is incorrectly placed on grass ABOVE the west path. REMOVE it from its current grass location and restore matching grass there. Place the locked barrier directly IN the west exit passage at the far-left canvas edge, roughly x0–110,y880–1020, where the horizontal dirt road actually exits left. The barrier must physically span that road from its upper bank to its lower bank, oriented north/south on the map, seen from its side/rear in elevated orthographic view. One post at road upper bank and one at lower bank, cedar panels connecting them with chain and lock. No way around it within the road exit. This is a gate blocking westward travel, NOT a gate facing south in the grass. Keep black linework, same scale, no text, no other changes.",
+    "causewayA": "Use case: stylized-concept\nAsset: Bell Before Dusk FLOODED CAUSEWAY platformer, first half of long course, requested2172x724 PNG genuine alpha.\nReference1 controls exact game's black ink outline, painted pixel-art fieldstone/timber, flat side-view and readable landable tops. Preserve scale. Reference2 is material/palette of the farmland region it connects to, not camera.\nMake a proper action-platformer route over peripheral floodwater, using flat landing surfaces and hard steps only. Topology:\nStart-left broad safe stone bank with flat top at y490 fromx0–420.\nFour broad low wooden piers at y490, spansx510–820,x910–1250,x1340–1690,x1780–2172, separated by90px jump gaps. Gaps expose water below, so jumping is necessary.\nA second raised landing band at y315, with long timber decks fromx450–1100 andx1260–1750. One-way platforms open below, upper route eventually ENDS at1750, requiring return to lower piers. It provides a different combat route but cannot bypass whole stage.\nThin decks have visible wood fronts and sparse stone supports; supports don't create extra landable floors. No solid wall connecting upper and lower height. Water restricted to low bottom strip y630–724, no giant splash covering piers. Neutral cool muted teal and slate, warm wood and amber lanterns, sparse reed clumps. Room for enemies to stand without prop clutter.\nFlat orthographic side-view, no ramps, wedges, diagonal top surfaces, stairs, floating rice islands, dense forest, sky, horizon, background scenery rectangle, characters, UI, text, labels, bells or white fringe. Transparent open air between platforms; dark neutral outline/edge pixels. Match established Bell Before Dusk rendering.",
+    "causewayB": "Use case: stylized-concept\nAsset: Bell Before Dusk FLOODED CAUSEWAY, panelB of two, requested2172x724 transparent game terrain.\nReference is panelA of this same level; preserve EXACT style, painted pixel-art textures, black outlines, warm wood, mossy slate stone, blue floodwater, amber lanterns, constant side-view scale. Continue from its right edge.\nLower route flat top about y440 (match the reference's low platform top), with broad separated piers: x0–420,x510–880,x970–1330,x1420–1710, short90px water jump gaps; then a solid safe east bank x1710–2172 at same flat height leading to simple open roadside gate at far right. Lowest water line matches reference, near y600.\nUpper route long one-way decks top about y220: spansx300–1000 andx1140–1560, two flat landable walkways open underneath. It terminates before the safe bank so descent is required. Only TWO platform heights; do not add middle or underwater walking lane. Keep supports thin, no center walls blocking jump trajectories. Long flat fighting areas, sparse reeds behind edges. Upper decks extend no more than70pixels deep, decorated with subtle hanging ropes. All walkable edges flat; no wedges, ramps, stairs or slopes.\nNo sky, scenery rectangle, distant landscape, forest, characters, enemies, UI, text, labels, bells, white fringe or watermark. Actual transparent space around and between terrain.",
+    "demonArena": "Use case: stylized-concept\nAsset: Bell Before Dusk DEMON WATCH arena terrain, side-view2172x724 transparent.\nReference sets exact painted pixel-art style, dark black outlines, wood/stone material, simple flat landable tops, character scale. Create an original arena continuation of the bandit-storehouse environment after a demon takeover. This is a usable combat room, not a poster.\nGeometry: a large continuous FLAT lowest stone courtyard floor fromx0to2172 topy570; plenty of standing room. Three floating/rear-supported landing decks above it at SAME middle heighty410: x100–650,x850–1350,x1550–2072. Two upper one-way landing decks at y250: x400–950 andx1220–1770. Decks only54px thick, mostly open underneath; long flat top surfaces with small dark braces. Maintain at least100px clear headroom below each deck. Players jump upward through platforms, land, drop and dodge across all three heights. Do not fill air between lanes with walls, diagonal ramps, cliffs or roofs. No baked spikes or hazards; boss and attacks will be added in code.\nMaterials: dark slate shrine-stone, blackened cedar, rope bindings, a few faded deep-indigo cloth scraps and tiny cold teal ember lamps behind floor edges; strongest amber/warmstone remains grounded in existing game palette. No oversized magical glowing centerpiece. Clear entrance on farleft and open exit on farright at ground height, modest stone posts. Dark ink outline with restrained moss and weathering. Open central field for boss movement.\nActual transparent background, no enclosing painted scenery, sky or horizon. No characters, monsters, enemy faces, statues, bells, writing, text, HUD, labels, white fringe, diagonals, stairs, wedges or fourth lane."
+  }
+}

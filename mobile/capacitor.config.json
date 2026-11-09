@@ -1,0 +1,10 @@
+{
+  "appId": "com.bellbeforedusk.playtest",
+  "appName": "Bell Before Dusk — Playtest",
+  "webDir": "www",
+  "backgroundColor": "#101018",
+  "android": {
+    "allowMixedContent": false,
+    "webContentsDebuggingEnabled": false
+  }
+}
